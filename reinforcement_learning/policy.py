@@ -6,30 +6,7 @@ import pufferlib.emulation
 import pufferlib.models
 from nmmo.entity.entity import EntityState
 
-from reinforcement_learning.resnet import ResNet
-
 EntityId = EntityState.State.attr_name_to_col["id"]
-
-
-class Random(pufferlib.models.Policy):
-  '''A random policy that resets weights on every call'''
-  def __init__(self, envs):
-    super().__init__()
-    self.envs = envs
-    self.decoders = torch.nn.ModuleList(
-        [torch.nn.Linear(1, n) for n in envs.single_action_space.nvec]
-    )
-
-  def encode_observations(self, env_outputs):
-    return torch.randn((env_outputs.shape[0], 1)).to(env_outputs.device), None
-
-  def decode_actions(self, hidden, lookup):
-    torch.nn.init.xavier_uniform_(hidden)
-    actions = [dec(hidden) for dec in self.decoders]
-    return actions, None
-
-  def critic(self, hidden):
-    return torch.zeros((hidden.shape[0], 1)).to(hidden.device)
 
 
 class Baseline(pufferlib.models.Policy):
@@ -41,24 +18,14 @@ class Baseline(pufferlib.models.Policy):
     self.flat_observation_structure = env.flat_observation_structure
 
     # obs["Tile"] has death fog and obstacle info
-    proj_fc_multiplier = 6
+    proj_fc_multiplier = 3  # tile (cnn), my_agent, task
     tile_attr_dim = env.structured_observation_space["Tile"].shape[1]
     self.tile_encoder = OriginalTileEncoder(input_size, tile_attr_dim)
-    #self.tile_encoder = ResnetTileEncoder(13, [25, 25])
-    #proj_fc_multiplier = 9  # resnet provides 4*256
 
     self.player_encoder = PlayerEncoder(input_size, hidden_size)
-    self.item_encoder = ItemEncoder(input_size, hidden_size)
-    self.inventory_encoder = InventoryEncoder(input_size, hidden_size)
-    self.market_encoder = MarketEncoder(input_size, hidden_size)
-
-    combat_dim = env.structured_observation_space["CombatAttr"].shape[0]
-    self.combat_encoder = CombatEncoder(input_size, combat_dim)
-
     task_size = env.structured_observation_space["Task"].shape[0]
     self.task_encoder = TaskEncoder(input_size, hidden_size, task_size)
 
-    # taking in: tile, my_agent, inventory, combat, market, task
     self.proj_fc = torch.nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
     self.value_head = torch.nn.Linear(hidden_size, 1)
@@ -70,24 +37,12 @@ class Baseline(pufferlib.models.Policy):
     player_embeddings, my_agent = self.player_encoder(
         env_outputs["Entity"], env_outputs["AgentId"][:, 0]
     )
-
-    item_embeddings = self.item_encoder(env_outputs["Inventory"])
-    inventory = self.inventory_encoder(item_embeddings)
-
-    combat = self.combat_encoder(env_outputs["CombatAttr"], env_outputs["Equipment"])
-
-    market_embeddings = self.item_encoder(env_outputs["Market"])
-    market = self.market_encoder(market_embeddings)
-
     task = self.task_encoder(env_outputs["Task"])
-
-    obs = torch.cat([tile, my_agent, inventory, combat, market, task], dim=-1)
+    obs = torch.cat([tile, my_agent, task], dim=-1)
     obs = self.proj_fc(obs)
 
     return obs, (
         player_embeddings,
-        item_embeddings,
-        market_embeddings,
         env_outputs["ActionTargets"],
     )
 
@@ -95,24 +50,6 @@ class Baseline(pufferlib.models.Policy):
     actions = self.action_decoder(hidden, lookup)
     value = self.value_head(hidden)
     return actions, value
-
-
-class ResnetTileEncoder(torch.nn.Module):
-  def __init__(self, in_ch, in_size):
-    super().__init__()
-
-    self.tile_net = ResNet(
-      in_ch, in_size, channel_and_blocks=[[32, 2], [32, 2], [64, 2]])
-
-    sample_in = torch.zeros(1, in_ch, *in_size)
-    with torch.no_grad():
-      self.h_size = len(self.tile_net(sample_in).flatten())  # (1, 64, 4, 4) -> 1024
-
-  def forward(self, tile_obs):
-    bs = tile_obs.shape[0]
-    h_tile = self.tile_net(tile_obs)
-    h_tile = h_tile.view(bs, -1)  # flatten
-    return h_tile
 
 
 class OriginalTileEncoder(torch.nn.Module):
@@ -191,72 +128,6 @@ class PlayerEncoder(torch.nn.Module):
     return agent_embeddings, my_agent_embeddings
 
 
-class ItemEncoder(torch.nn.Module):
-  def __init__(self, input_size, hidden_size):
-    super().__init__()
-    self.item_offset = torch.tensor([i * 256 for i in range(16)])
-    self.embedding = torch.nn.Embedding(256, 32)
-
-    self.fc = torch.nn.Linear(2 * 32 + 12, hidden_size)
-
-    self.discrete_idxs = [1, 14]
-    self.discrete_offset = torch.Tensor([2, 0])
-    self.continuous_idxs = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15]
-    self.continuous_scale = torch.Tensor(
-        [
-            1 / 10,
-            1 / 10,
-            1 / 10,
-            1 / 100,
-            1 / 100,
-            1 / 100,
-            1 / 40,
-            1 / 40,
-            1 / 40,
-            1 / 100,
-            1 / 100,
-            1 / 100,
-        ]
-    )
-
-  def forward(self, items):
-    if self.discrete_offset.device != items.device:
-      self.discrete_offset = self.discrete_offset.to(items.device)
-      self.continuous_scale = self.continuous_scale.to(items.device)
-
-    # Embed each feature separately
-    discrete = items[:, :, self.discrete_idxs] + self.discrete_offset
-    discrete = self.embedding(discrete.long().clip(0, 255))
-    batch, item, attrs, embed = discrete.shape
-    discrete = discrete.view(batch, item, attrs * embed)
-
-    continuous = items[:, :, self.continuous_idxs] / self.continuous_scale
-
-    item_embeddings = torch.cat([discrete, continuous], dim=-1)
-    item_embeddings = self.fc(item_embeddings)
-    return item_embeddings
-
-
-class InventoryEncoder(torch.nn.Module):
-  def __init__(self, input_size, hidden_size):
-    super().__init__()
-    self.fc = torch.nn.Linear(12 * hidden_size, input_size)
-
-  def forward(self, inventory):
-    agents, items, hidden = inventory.shape
-    inventory = inventory.view(agents, items * hidden)
-    return self.fc(inventory)
-
-
-class MarketEncoder(torch.nn.Module):
-  def __init__(self, input_size, hidden_size):
-    super().__init__()
-    self.fc = torch.nn.Linear(hidden_size, input_size)
-
-  def forward(self, market):
-    return self.fc(market).mean(-2)
-
-
 class TaskEncoder(torch.nn.Module):
   def __init__(self, input_size, hidden_size, task_size):
     super().__init__()
@@ -266,17 +137,6 @@ class TaskEncoder(torch.nn.Module):
     return self.fc(task.clone())
 
 
-class CombatEncoder(torch.nn.Module):
-  def __init__(self, input_size, combat_dim, equipment_dim=170):
-    super().__init__()
-    # equipment_dim: 17 items x 10 levels
-    self.fc = torch.nn.Linear(combat_dim + equipment_dim, input_size)
-
-  def forward(self, combat_attr, equipment):
-    equipment = equipment.view(equipment.shape[0], -1)  # flatten
-    return self.fc(torch.cat([combat_attr, equipment], dim=-1))
-
-
 class ActionDecoder(torch.nn.Module):
   def __init__(self, input_size, hidden_size):
     super().__init__()
@@ -284,16 +144,7 @@ class ActionDecoder(torch.nn.Module):
         {
             "attack_style": torch.nn.Linear(hidden_size, 3),
             "attack_target": torch.nn.Linear(hidden_size, hidden_size),
-            "market_buy": torch.nn.Linear(hidden_size, hidden_size),
-            "inventory_destroy": torch.nn.Linear(hidden_size, hidden_size),
-            "inventory_give_item": torch.nn.Linear(hidden_size, hidden_size),
-            "inventory_give_player": torch.nn.Linear(hidden_size, hidden_size),
-            "gold_quantity": torch.nn.Linear(hidden_size, 99),
-            "gold_target": torch.nn.Linear(hidden_size, hidden_size),
             "move": torch.nn.Linear(hidden_size, 5),
-            "inventory_sell": torch.nn.Linear(hidden_size, hidden_size),
-            "inventory_price": torch.nn.Linear(hidden_size, 99),
-            "inventory_use": torch.nn.Linear(hidden_size, hidden_size),
         }
     )
 
@@ -310,35 +161,17 @@ class ActionDecoder(torch.nn.Module):
   def forward(self, hidden, lookup):
     (
         player_embeddings,
-        inventory_embeddings,
-        market_embeddings,
         action_targets,
     ) = lookup
 
     embeddings = {
         "attack_target": player_embeddings,
-        "market_buy": market_embeddings,
-        "inventory_destroy": inventory_embeddings,
-        "inventory_give_item": inventory_embeddings,
-        "inventory_give_player": player_embeddings,
-        "gold_target": player_embeddings,
-        "inventory_sell": inventory_embeddings,
-        "inventory_use": inventory_embeddings,
     }
 
     action_targets = {
         "attack_style": action_targets["Attack"]["Style"],
         "attack_target": action_targets["Attack"]["Target"],
-        "market_buy": action_targets["Buy"]["MarketItem"],
-        "inventory_destroy": action_targets["Destroy"]["InventoryItem"],
-        "inventory_give_item": action_targets["Give"]["InventoryItem"],
-        "inventory_give_player": action_targets["Give"]["Target"],
-        "gold_quantity": action_targets["GiveGold"]["Price"],
-        "gold_target": action_targets["GiveGold"]["Target"],
         "move": action_targets["Move"]["Direction"],
-        "inventory_sell": action_targets["Sell"]["InventoryItem"],
-        "inventory_price": action_targets["Sell"]["Price"],
-        "inventory_use": action_targets["Use"]["InventoryItem"],
     }
 
     actions = []

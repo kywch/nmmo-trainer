@@ -41,41 +41,21 @@ class Config:
     clip_coef = 0.1  # PPO clip coefficient
 
     # Environment Args
-    num_agents = 96  # Number of agents to use for training
-    num_npcs = 256  # Number of NPCs to use for training
-    max_episode_length = 1024  # Number of steps per episode
-    num_maps = 128  # Number of maps to use for training
-    maps_path = "maps/train/"  # Path to maps to use for training
-    map_size = 128  # Size of maps to use for training
-    resilient_population = 0.2  # Percentage of agents to be resilient to starvation/dehydration
+    num_agents = 64  # Number of agents to use for training
+    num_agents_per_team = 8
+    #max_episode_length = 1024  # Number of steps per episode
+    #num_maps = 128  # Number of maps to use for training
+    maps_path = "maps/minigame/"  # Path to maps to use for training
+    #map_size = 128  # Size of maps to use for training
+    #resilient_population = 0.2  # Percentage of agents to be resilient to starvation/dehydration
     tasks_path = None  # Path to tasks to use for training
-    eval_mode = False # Run the postprocessor in the eval mode
+    eval_mode = None # Run the postprocessor in the eval mode
     detailed_stat = True # Run the postprocessor in the detailed stat mode, which sends a lot to wandb
     early_stop_agent_num = 8  # Stop the episode when the number of agents reaches this number
 
     # Experimental Args
-    team_mode_prob = 0.3  # TEAM_TASK_EPISODE_PROB
-    spawn_immunity = max_episode_length  # make the game cooperative
-    base_exp = 50  # PROGRESSION_EXP_THRESHOLD
-    npc_power = 0.3  # NPC_POWER_MULTIPLIER
-    armor_drop = 0.3  # NPC_ARMOR_DROP_PROB
-    experimental_armor = None  #  EQUIPMENT_ARMOR_EXPERIMENTAL
-
-    # Reward Args
-    only_use_main_skill = True  # This should be default. If set False, agents can use all combat styles
-    survival_mode_criteria = 35  # for health, food, water level
-    get_resource_criteria = 75  # for food and water
-    death_fog_criteria = 2  # fog damage
-    survival_heal_weight = 0.001  # * diff health level (max: 100)
-    survival_resource_weight = 0.06
-    get_resource_weight = 0.03
-    progress_bonus_weight = 0.10
-    runaway_bonus_weight = 0.02
-    progress_refractory_period = 5
-    meander_bonus_weight = 0.01
-    combat_bonus_weight = 0.001
-    upgrade_bonus_weight = 0.02
-    unique_event_bonus_weight = 0.01
+    team_mode_prob = 1.0  # TEAM_TASK_EPISODE_PROB
+    spawn_immunity = 20  # make the game cooperative
 
     # Policy Args
     input_size = 256
