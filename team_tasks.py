@@ -13,24 +13,26 @@ curriculum: List[TaskSpec] = []
 
 # Stay alive as long as possible
 curriculum.append(
-    TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": 1024})
+    TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": 200})
 )
 
-def ProtectMyLeader(gs, subject, num_tick):  # for num_ticks
+def ProtectAgent(gs, subject, target_protect, num_tick):  # for num_ticks
     return TickGE(gs, subject, num_tick) *\
-           CheckAgentStatus(gs, subject, target="my_team_leader", status="alive")
+           CheckAgentStatus(gs, subject, target_protect, status="alive")
 
-def HeadHunting(gs, subject, target):  # for target
-    my_leader = CheckAgentStatus(gs, subject, target="my_team_leader", status="alive")
-    if my_leader * CheckAgentStatus(gs, subject, target, status="dead") == 1:
+def HeadHunting(gs, subject, target_protect, target_destroy):  # for target
+    my_leader = CheckAgentStatus(gs, subject, target_protect, status="alive")
+    if my_leader * CheckAgentStatus(gs, subject, target_destroy, status="dead") == 1:
         return 1
     # Give partial reward for protecting my leader
     return TickGE(gs, subject, 2000) * my_leader
 
 for tick in TICK_GOAL:
     curriculum.append(
-        TaskSpec(eval_fn=ProtectMyLeader,
-                 eval_fn_kwargs={"num_tick": tick},
+        TaskSpec(eval_fn=ProtectAgent,
+                 eval_fn_kwargs={"target_protect": "my_team_leader",
+                                 "num_tick": tick},
+                 sampling_weight=10,
                  reward_to="team"))
 
 # want the other team or team leader to die
@@ -38,6 +40,7 @@ for target in ["left_team", "left_team_leader", "right_team", "right_team_leader
     curriculum.append(
         TaskSpec(eval_fn=CheckAgentStatus,
                  eval_fn_kwargs={"target": target, "status": "dead"},
+                 sampling_weight=10,
                  reward_to="team"))
 
 for target in ["left_team_leader", "right_team_leader"]:
@@ -48,7 +51,9 @@ for target in ["left_team_leader", "right_team_leader"]:
 
     curriculum.append(
         TaskSpec(eval_fn=HeadHunting,
-                 eval_fn_kwargs={"target": target},
+                 eval_fn_kwargs={"target_destroy": target,
+                                 "target_protect": "my_team_leader"},
+                 sampling_weight=10,
                  reward_to="team"))
 
 for target in ["left_team", "right_team"]:
@@ -62,6 +67,7 @@ for reward_to in ["agent", "team"]:
         curriculum.append(
             TaskSpec(eval_fn=DefeatEntity,
                     eval_fn_kwargs={"agent_type": "player", "level": 0, "num_agent": num_agent},
+                    sampling_weight=2,
                     reward_to=reward_to))
 
 if __name__ == "__main__":
