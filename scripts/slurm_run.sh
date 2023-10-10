@@ -11,7 +11,7 @@
 #SBATCH --gpus=1
 #SBATCH --cpus-per-gpu=16
 #__SBATCH --mem=80G
-#SBATCH --chdir=/fsx/proj-nmmo/nmmo-baselines/
+#SBATCH --chdir=/fsx/proj-nmmo/nmmo-trainer/
 #SBATCH --output=sbatch/%j.log
 #SBATCH --error=sbatch/%j.log
 #SBATCH --requeue
