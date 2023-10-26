@@ -41,7 +41,8 @@ for target in ["left_team", "left_team_leader", "right_team", "right_team_leader
         TaskSpec(eval_fn=CheckAgentStatus,
                  eval_fn_kwargs={"target": target, "status": "dead"},
                  sampling_weight=10,
-                 reward_to="team"))
+                 reward_to="team",
+                 tags=["team_battle"]))
 
 for target in ["left_team_leader", "right_team_leader"]:
     curriculum.append(
@@ -54,7 +55,8 @@ for target in ["left_team_leader", "right_team_leader"]:
                  eval_fn_kwargs={"target_destroy": target,
                                  "target_protect": "my_team_leader"},
                  sampling_weight=10,
-                 reward_to="team"))
+                 reward_to="team",
+                 tags=["team_battle"]))
 
 for target in ["left_team", "right_team"]:
     curriculum.append(

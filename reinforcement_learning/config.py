@@ -52,16 +52,15 @@ class Config:
     eval_mode = None # Run the postprocessor in the eval mode
     detailed_stat = True # Run the postprocessor in the detailed stat mode, which sends a lot to wandb
 
-    # Experimental Args
-    team_mode_prob = 0.8  # TEAM_TASK_EPISODE_PROB
-    team_battle_prob = 0.3  # TEAM_BATTLE_EPISODE_PROB (among team episodes)
-    spawn_immunity = 20
-
     # Reward Args
     runaway_fog_weight = 0.01
     local_superiority_weight = 0.01
     local_area_dist = 5
     concentrate_fire_weight = 0.01
+
+    survival_mode_criteria = 35  # of the health, food, water levels
+    get_resource_criteria = 75
+    get_resource_weight = 0.02
 
     # Policy Args
     input_size = 256

@@ -11,13 +11,15 @@ import nmmo.core.config as cfg
 from nmmo.lib import material
 from nmmo.lib.event_log import EventCode
 from nmmo.entity.entity import EntityState
-from nmmo.core.game_api import AgentTraining, TeamTraining, TeamBattle
 from nmmo.minigames import RacetoCenter
 
 from minigame_postproc import MiniGamePostprocessor
+from team_games import MiniAgentTraining, MiniTeamTraining, MiniTeamBattle
 
 EntityAttr = EntityState.State.attr_name_to_col
 IMPASSIBLE = list(material.Impassible.indices)
+
+RESOURCE_EVENTS = [EventCode.EAT_FOOD, EventCode.DRINK_WATER]
 
 PASSIVE_REPR = 1  # matched to npc_type
 NEUTRAL_REPR = 2
@@ -48,9 +50,9 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
         self.set("PATH_MAPS", f"{args.maps_path}/")
         self.set("CURRICULUM_FILE_PATH", args.tasks_path)
         self.set("TASK_EMBED_DIM", args.task_size)
-        self.set("COMBAT_SPAWN_IMMUNITY", args.spawn_immunity)
 
-        self.set("GAME_PACKS", [(AgentTraining, 1), (TeamTraining, 1), (TeamBattle, 1), (RacetoCenter, 1)])
+        self.set("GAME_PACKS", [(MiniAgentTraining, 1), (MiniTeamTraining, 1),
+                                (MiniTeamBattle, 1), (RacetoCenter, 1)])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -64,6 +66,9 @@ def make_env_creator(args: Namespace):
                 "local_superiority_weight": args.local_superiority_weight,
                 "local_area_dist": args.local_area_dist,
                 "concentrate_fire_weight": args.concentrate_fire_weight,
+                "survival_mode_criteria": args.survival_mode_criteria,
+                "get_resource_criteria": args.get_resource_criteria,
+                "get_resource_weight": args.get_resource_weight,
             },
         )
         return env
@@ -77,13 +82,23 @@ class Postprocessor(MiniGamePostprocessor):
             local_superiority_weight=0,
             local_area_dist=0,
             concentrate_fire_weight=0,
-            ):
+            survival_mode_criteria=35,
+            get_resource_criteria=75,
+            get_resource_weight=0,
+        ):
         super().__init__(env, agent_id, eval_mode)
         self.config = env.config
+
         self.runaway_fog_weight = runaway_fog_weight
+
         self.local_superiority_weight = local_superiority_weight
         self.local_area_dist = local_area_dist
         self.concentrate_fire_weight = concentrate_fire_weight
+
+        self.survival_mode_criteria = survival_mode_criteria
+        self.get_resource_criteria = get_resource_criteria
+        self.get_resource_weight = get_resource_weight
+
         self._reset_reward_vars()
 
         # placeholder for the entity maps
@@ -97,6 +112,7 @@ class Postprocessor(MiniGamePostprocessor):
             self._dist_map[l:r, l:r] = center - i - 1
 
     def reset(self, observation):
+        super().reset(observation)
         self._reset_reward_vars()
         # get target_protect, target_destroy from the task, for ProtectAgent and HeadHunting
         if self._my_task is not None:
@@ -183,30 +199,84 @@ class Postprocessor(MiniGamePostprocessor):
             # Run away from death fog
             reward += self.runaway_fog_weight if 1 < self._curr_death_fog < self._prev_death_fog else 0
 
-            # Local superiority bonus
-            reward += self.local_superiority_weight * self._local_superiority
+            if self.env.config.COMBAT_SYSTEM_ENABLED:
+                # Local superiority bonus
+                reward += self.local_superiority_weight * self._local_superiority
+                # Concentrate fire bonus
+                reward += self.concentrate_fire_weight * self._concentrate_fire
 
-            # Concentrate fire bonus
-            reward += self.concentrate_fire_weight * self._concentrate_fire
+            if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
+                reward += self._eat_progress_bonus()
 
         return reward, done, info
+
+    def _eat_progress_bonus(self):
+        eat_progress_bonus = 0
+        for idx, event_code in enumerate(RESOURCE_EVENTS):
+            if self._prev_basic_events[idx] > 0:
+                if event_code == EventCode.EAT_FOOD:
+                    # bonus for eating
+                    eat_progress_bonus += self.get_resource_weight
+                    # extra bonus for eating when hungry
+                    if self._prev_food_level <= self.survival_mode_criteria:
+                        eat_progress_bonus += self.get_resource_weight
+                    # extra bonus for eat and progress
+                    if self._curr_dist < self._prev_eat_dist:
+                        eat_progress_bonus += 2*self.get_resource_weight
+                        self._prev_eat_dist = self._curr_dist
+
+                if event_code == EventCode.DRINK_WATER:
+                    # bonus for drinking
+                    eat_progress_bonus += self.get_resource_weight
+                    # extra bonus for eating when hungry
+                    if self._prev_water_level <= self.survival_mode_criteria:
+                        eat_progress_bonus += self.get_resource_weight
+                    # extra bonus for eat and progress
+                    if self._curr_dist < self._prev_drink_dist:
+                        eat_progress_bonus += 2*self.get_resource_weight
+                        self._prev_drink_dist = self._curr_dist
+
+        return eat_progress_bonus
 
     def _reset_reward_vars(self):
         self._prev_death_fog = 0
         self._curr_death_fog = 0
+
         self._local_superiority = 0
         self._concentrate_fire = 0
         self._target_protect = []
         self._target_destroy = []
 
+        # Eat & progress bonuses: eat & progress, drink & progress
+        # (reward when agents eat/drink the farthest so far)
+        self._prev_basic_events = np.zeros(2, dtype=np.int16)  # EAT_FOOD, DRINK_WATER
+        self._prev_food_level = self._curr_food_level = 100
+        self._prev_water_level = self._curr_water_level = 100
+        self._prev_health_level = self._curr_health_level = 100
+        self._prev_eat_dist = np.inf
+        self._prev_drink_dist = np.inf
+        self._curr_dist = np.inf
+
     def _update_reward_vars(self, agent):
+        tick_log = self.env.realm.event_log.get_data(agents=self._my_task.assignee, tick=-1)
+        attr_to_col = self.env.realm.event_log.attr_to_col
+
         # Death fog
         self._prev_death_fog = self._curr_death_fog
         self._curr_death_fog = self.env.realm.fog_map[agent.pos]
+        self._curr_dist = self._dist_map[agent.pos]
+
+        # System-dependent reward vars
+        self._update_combat_reward_vars(agent, tick_log, attr_to_col)
+        self._update_resource_reward_vars(agent, tick_log, attr_to_col)
+
+    def _update_combat_reward_vars(self, agent, tick_log, attr_to_col):
+        if not self.env.config.COMBAT_SYSTEM_ENABLED:
+            return
 
         # Local superiority, get from the agent's entity map
         local_map = self._entity_map[agent.pos[0]-self.local_area_dist:agent.pos[0]+self.local_area_dist+1,
-                                      agent.pos[1]-self.local_area_dist:agent.pos[1]+self.local_area_dist+1]
+                                     agent.pos[1]-self.local_area_dist:agent.pos[1]+self.local_area_dist+1]
         # TODO: include all enemies and allies
         # how about their health too?
         num_enemy = np.sum(local_map == ENEMY_REPR)
@@ -215,12 +285,27 @@ class Postprocessor(MiniGamePostprocessor):
 
         # Concentrate fire, get from the agent's log
         self._concentrate_fire = 0
-        log = self.env.realm.event_log.get_data(agents=self._my_task.assignee,  # get team log
-                                                event_code=EventCode.SCORE_HIT, tick=-1)
-        attr_to_col = self.env.realm.event_log.attr_to_col
-        my_hit = log[:,attr_to_col["ent_id"]] == self.agent_id
+        my_hit = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
+                 (tick_log[:,attr_to_col["ent_id"]] == self.agent_id)
         if sum(my_hit) > 0:
-            my_target = log[my_hit,attr_to_col["target_ent"]]
-            target_hits = log[:,attr_to_col["target_ent"]] == my_target[0]
+            my_target = tick_log[my_hit,attr_to_col["target_ent"]]
+            target_hits = tick_log[:,attr_to_col["target_ent"]] == my_target[0]
             # reward the single hit as well
             self._concentrate_fire = sum(target_hits)
+
+    def _update_resource_reward_vars(self, agent, tick_log, attr_to_col):
+        if not self.env.config.RESOURCE_SYSTEM_ENABLED:
+            return
+
+        for idx, event_code in enumerate(RESOURCE_EVENTS):
+            event_idx = (tick_log[:,attr_to_col["event"]] == event_code) & \
+                        (tick_log[:,attr_to_col["ent_id"]] == self.agent_id)
+            self._prev_basic_events[idx] = int(sum(event_idx) > 0)
+
+        # agent-based vars
+        self._prev_food_level = self._curr_food_level
+        self._curr_food_level = agent.resources.food.val
+        self._prev_water_level = self._curr_water_level
+        self._curr_water_level = agent.resources.water.val
+        self._prev_health_level = self._curr_health_level
+        self._curr_health_level = agent.resources.health.val
