@@ -7,9 +7,12 @@ import pufferlib
 import pufferlib.emulation
 
 import nmmo
+import nmmo.core.config as cfg
 from nmmo.lib import material
-from nmmo.lib.log import EventCode
+from nmmo.lib.event_log import EventCode
 from nmmo.entity.entity import EntityState
+from nmmo.core.game_api import AgentTraining, TeamTraining, TeamBattle
+from nmmo.minigames import RacetoCenter
 
 from minigame_postproc import MiniGamePostprocessor
 
@@ -25,32 +28,29 @@ TEAMMATE_REPR = 6
 PROTECT_TARGET_REPR = 7
 
 
-class Config(nmmo.config.MiniGame):
+class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
     """Configuration for Neural MMO."""
 
     def __init__(self, args: Namespace):
         super().__init__()
 
-        self.PROVIDE_ACTION_TARGETS = True
-        self.PROVIDE_NOOP_ACTION_TARGET = True
-        self.PROVIDE_DEATH_FOG_OBS = True
-        self.MAP_FORCE_GENERATION = False
-        self.HORIZON = args.max_episode_length
-        self.PLAYER_N = args.num_agents
-        self.TEAMS = {i: [i*args.num_agents_per_team+j+1 for j in range(args.num_agents_per_team)]
-                          for i in range(args.num_agents // args.num_agents_per_team)}
+        self.set("PROVIDE_ACTION_TARGETS", True)
+        self.set("PROVIDE_NOOP_ACTION_TARGET", True)
+        self.set("PROVIDE_DEATH_FOG_OBS", True)
+        self.set("MAP_FORCE_GENERATION", False)
+        self.set("COMMUNICATION_SYSTEM_ENABLED", False)
+        self.set("HORIZON", args.max_episode_length)
+        self.set("PLAYER_N", args.num_agents)
+        self.set("TEAMS", {i: [i*args.num_agents_per_team+j+1 for j in range(args.num_agents_per_team)]
+                           for i in range(args.num_agents // args.num_agents_per_team)})
 
-        self.MAP_N = args.num_maps
-        self.PATH_MAPS = f"{args.maps_path}/"
-        self.CURRICULUM_FILE_PATH = args.tasks_path
-        self.TASK_EMBED_DIM = args.task_size
+        self.set("MAP_N", args.num_maps)
+        self.set("PATH_MAPS", f"{args.maps_path}/")
+        self.set("CURRICULUM_FILE_PATH", args.tasks_path)
+        self.set("TASK_EMBED_DIM", args.task_size)
+        self.set("COMBAT_SPAWN_IMMUNITY", args.spawn_immunity)
 
-        self.COMMUNICATION_SYSTEM_ENABLED = False
-
-        # Currently testing
-        self.TEAM_TASK_EPISODE_PROB = args.team_mode_prob
-        self.TEAM_BATTLE_EPISODE_PROB = args.team_battle_prob
-        self.COMBAT_SPAWN_IMMUNITY = args.spawn_immunity
+        self.set("GAME_PACKS", [(AgentTraining, 1), (TeamTraining, 1), (TeamBattle, 1), (RacetoCenter, 1)])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -207,6 +207,8 @@ class Postprocessor(MiniGamePostprocessor):
         # Local superiority, get from the agent's entity map
         local_map = self._entity_map[agent.pos[0]-self.local_area_dist:agent.pos[0]+self.local_area_dist+1,
                                       agent.pos[1]-self.local_area_dist:agent.pos[1]+self.local_area_dist+1]
+        # TODO: include all enemies and allies
+        # how about their health too?
         num_enemy = np.sum(local_map == ENEMY_REPR)
         # TODO: add the distance-based bonus?
         self._local_superiority = np.sum(local_map == TEAMMATE_REPR) - num_enemy if num_enemy > 0 else 0

@@ -45,8 +45,8 @@ class Config:
     num_agents_per_team = 8
     max_episode_length = 512  # Number of steps per episode
     num_maps = 256  # Number of maps to use for training
-    maps_path = "maps/minigame/"  # Path to maps to use for training
-    #map_size = 128  # Size of maps to use for training
+    maps_path = "maps/game/"  # Path to maps to use for training
+    map_size = 128  # Size of maps to use for training
     #resilient_population = 0.2  # Percentage of agents to be resilient to starvation/dehydration
     tasks_path = None  # Path to tasks to use for training
     eval_mode = None # Run the postprocessor in the eval mode

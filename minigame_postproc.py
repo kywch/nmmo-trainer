@@ -77,9 +77,9 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             reward = -1.0
 
         # Competition mode: stop early when there is a winner (i.e. only one team left) -- end the game
-        if self.env.team_battle_mode and self.env.battle_winners is not None:
+        if self.env.game.winners is not None:
             done = True
-            reward = len(self.env.config.TEAMS) if self.agent_id in self.env.battle_winners else -1.0
+            reward = 1 if self.agent_id in self.env.game.winners else -1.0
 
         if not done:
             self.epoch_length += 1

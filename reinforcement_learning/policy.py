@@ -9,6 +9,7 @@ from nmmo.entity.entity import EntityState
 EntityId = EntityState.State.attr_name_to_col["id"]
 
 
+# A simple policy that only gets Entity, Tile, Task, and outputs Move and Attack actions.
 class Baseline(pufferlib.models.Policy):
   def __init__(self, env, input_size=256, hidden_size=256):
     super().__init__(env)
@@ -20,7 +21,7 @@ class Baseline(pufferlib.models.Policy):
     # obs["Tile"] has death fog and obstacle info
     proj_fc_multiplier = 3  # tile (cnn), my_agent, task
     tile_attr_dim = env.structured_observation_space["Tile"].shape[1]
-    self.tile_encoder = OriginalTileEncoder(input_size, tile_attr_dim)
+    self.tile_encoder = TileEncoder(input_size, tile_attr_dim)
 
     self.player_encoder = PlayerEncoder(input_size, hidden_size)
     task_size = env.structured_observation_space["Task"].shape[0]
@@ -52,7 +53,7 @@ class Baseline(pufferlib.models.Policy):
     return actions, value
 
 
-class OriginalTileEncoder(torch.nn.Module):
+class TileEncoder(torch.nn.Module):
   def __init__(self, input_size, tile_attr_dim):
     super().__init__()
     self.tile_attr_dim = tile_attr_dim
