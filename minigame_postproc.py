@@ -9,9 +9,11 @@ EntityAttr = EntityState.State.attr_name_to_col
 class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
     def __init__(
             self, env, agent_id,
-            eval_mode=False):
+            eval_mode=False,
+            detailed_stat=True):
         super().__init__(env, is_multiagent=True, agent_id=agent_id)
         self.eval_mode = eval_mode
+        self.detailed_stat = detailed_stat
         self._reset_episode_stats()
 
     def reset(self, observation):
@@ -76,10 +78,11 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             done = True
             reward = -1.0
 
-        # Competition mode: stop early when there is a winner (i.e. only one team left) -- end the game
-        if self.env.game.winners is not None:
+        if self.is_env_done():
             done = True
-            reward = 1 if self.agent_id in self.env.game.winners else -1.0
+            reward = -1.0
+            if self.env.game.winners and self.agent_id in self.env.game.winners:
+                reward = 1.0
 
         if not done:
             self.epoch_length += 1
@@ -105,24 +108,16 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             # "return" is used for ranking in the eval mode, so put the task progress here
             info["return"] = self._max_task_progress  # this is 1 if done
 
-        # if self.detailed_stat and self.is_env_done():
-        #     info["stats"].update(get_market_stat(self.env.realm))
-        #     info["stats"].update(get_supply_stat(self.env.realm))
-        #     for key, val in self.env.get_episode_stats().items():
-        #         info["stats"]["supply/"+key] = val  # supply is a placeholder
+        if self.detailed_stat and self.is_env_done() and \
+           self.agent_id == min(self.env.agents):  # to avoid duplicate stats
+            game_name = self.env.game.__class__.__name__
+            for key, val in self.env.game.get_episode_stats().items():
+                info["stats"][game_name+"/"+key] = val
 
         return reward, done, info
 
     def is_env_done(self):
-        # Trigger only when the episode is done, and has the lowest agent id in agents
-        if self.agent_id > min(self.env.agents):
-            return False
-
-        # When there is a competition winner or the env reached the end
-        if self.env.battle_winners is not None or\
-           self.env.realm.tick >= self.env.config.HORIZON:
-            return True
-        for player_id in self.env.agents:  # any alive agents?
-            if player_id in self.env.realm.players:
-                return False
-        return True
+        # When there are declared winners (i.e. only one team left) or the time is up
+        return self.env.game.winners or \
+               self.env.realm.tick >= self.env.realm.config.HORIZON or \
+               self.env.realm.num_players == 0
