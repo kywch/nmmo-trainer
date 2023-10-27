@@ -72,6 +72,17 @@ for reward_to in ["agent", "team"]:
                     sampling_weight=2,
                     reward_to=reward_to))
 
+for event_code in ["EAT_FOOD", "DRINK_WATER"]:
+    for num_cnt in range(5, 50, 10):
+        curriculum.append(
+            TaskSpec(
+                eval_fn=CountEvent,
+                eval_fn_kwargs={"event": event_code, "N": num_cnt},
+                sampling_weight=10,
+                reward_to="agent",
+            )
+        )
+
 if __name__ == "__main__":
     # Import the custom curriculum
     print("------------------------------------------------------------")

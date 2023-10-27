@@ -61,6 +61,7 @@ class Config:
     survival_mode_criteria = 35  # of the health, food, water levels
     get_resource_criteria = 75
     get_resource_weight = 0.02
+    heal_bonus_weight = 0.01
 
     # Policy Args
     input_size = 256

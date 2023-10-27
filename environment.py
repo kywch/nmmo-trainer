@@ -69,6 +69,7 @@ def make_env_creator(args: Namespace):
                 "survival_mode_criteria": args.survival_mode_criteria,
                 "get_resource_criteria": args.get_resource_criteria,
                 "get_resource_weight": args.get_resource_weight,
+                "heal_bonus_weight": args.heal_bonus_weight,
             },
         )
         return env
@@ -85,6 +86,7 @@ class Postprocessor(MiniGamePostprocessor):
             survival_mode_criteria=35,
             get_resource_criteria=75,
             get_resource_weight=0,
+            heal_bonus_weight=0,
         ):
         super().__init__(env, agent_id, eval_mode)
         self.config = env.config
@@ -98,6 +100,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
         self.get_resource_weight = get_resource_weight
+        self.heal_bonus_weight = heal_bonus_weight
 
         self._reset_reward_vars()
 
@@ -207,6 +210,9 @@ class Postprocessor(MiniGamePostprocessor):
 
             if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
                 reward += self._eat_progress_bonus()
+
+                if agent.resources.health_restore > 5:  # health restored when water, food >= 50
+                    reward += self.heal_bonus_weight
 
         return reward, done, info
 
