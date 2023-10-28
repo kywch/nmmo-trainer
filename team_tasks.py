@@ -5,6 +5,7 @@ from typing import List
 
 from nmmo.task.base_predicates import *
 from nmmo.task.task_spec import TaskSpec, check_task_spec
+from nmmo.minigames.center_race import ProgressTowardCenter
 
 TICK_GOAL = [10, 30, 50, 70, 100, 150, 200, 256]
 ENTITY_GOAL = [1, 2, 3, 5, 7, 10]
@@ -68,9 +69,9 @@ for reward_to in ["agent", "team"]:
     for num_agent in ENTITY_GOAL:
         curriculum.append(
             TaskSpec(eval_fn=DefeatEntity,
-                    eval_fn_kwargs={"agent_type": "player", "level": 0, "num_agent": num_agent},
-                    sampling_weight=2,
-                    reward_to=reward_to))
+                     eval_fn_kwargs={"agent_type": "player", "level": 0, "num_agent": num_agent},
+                     sampling_weight=2,
+                     reward_to=reward_to))
 
 for event_code in ["EAT_FOOD", "DRINK_WATER"]:
     for num_cnt in range(5, 50, 10):
@@ -82,6 +83,14 @@ for event_code in ["EAT_FOOD", "DRINK_WATER"]:
                 reward_to="agent",
             )
         )
+
+curriculum.append(
+    TaskSpec(eval_fn=ProgressTowardCenter,
+             eval_fn_kwargs={},
+             sampling_weight=3,
+             reward_to="agent",
+             tags=["center_race"]))
+
 
 if __name__ == "__main__":
     # Import the custom curriculum

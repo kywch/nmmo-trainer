@@ -1,5 +1,7 @@
 from argparse import Namespace
+from collections import Counter
 
+import math
 import gym.spaces
 import numpy as np
 
@@ -70,6 +72,7 @@ def make_env_creator(args: Namespace):
                 "get_resource_criteria": args.get_resource_criteria,
                 "get_resource_weight": args.get_resource_weight,
                 "heal_bonus_weight": args.heal_bonus_weight,
+                "meander_bonus_weight": args.meander_bonus_weight,
             },
         )
         return env
@@ -87,6 +90,7 @@ class Postprocessor(MiniGamePostprocessor):
             get_resource_criteria=75,
             get_resource_weight=0,
             heal_bonus_weight=0,
+            meander_bonus_weight=0,
         ):
         super().__init__(env, agent_id, eval_mode)
         self.config = env.config
@@ -101,6 +105,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.get_resource_criteria = get_resource_criteria
         self.get_resource_weight = get_resource_weight
         self.heal_bonus_weight = heal_bonus_weight
+        self.meander_bonus_weight = meander_bonus_weight
 
         self._reset_reward_vars()
 
@@ -184,9 +189,10 @@ class Postprocessor(MiniGamePostprocessor):
             mask[-1] = 1  # if no valid target, make sure to turn on no-op
         return mask
 
-    # def action(self, action):
-    #     """Called before actions are passed from the model to the environment"""
-    #     return action
+    def action(self, action):
+        """Called before actions are passed from the model to the environment"""
+        self._prev_moves.append(action[2])  # 2 is the index for move direction
+        return action
 
     def reward_done_info(self, reward, done, info):
         """Called on reward, done, and info before they are returned from the environment"""
@@ -213,6 +219,12 @@ class Postprocessor(MiniGamePostprocessor):
 
                 if agent.resources.health_restore > 5:  # health restored when water, food >= 50
                     reward += self.heal_bonus_weight
+
+            if self._my_task.reward_to == "agent":
+                if len(self._prev_moves) > 5:
+                  move_entropy = calculate_entropy(self._prev_moves[-8:])  # of last 8 moves
+                  reward += self.meander_bonus_weight * (move_entropy - 1)
+
 
         return reward, done, info
 
@@ -247,6 +259,7 @@ class Postprocessor(MiniGamePostprocessor):
     def _reset_reward_vars(self):
         self._prev_death_fog = 0
         self._curr_death_fog = 0
+        self._prev_moves = []
 
         self._local_superiority = 0
         self._concentrate_fire = 0
@@ -315,3 +328,12 @@ class Postprocessor(MiniGamePostprocessor):
         self._curr_water_level = agent.resources.water.val
         self._prev_health_level = self._curr_health_level
         self._curr_health_level = agent.resources.health.val
+
+def calculate_entropy(sequence):
+    frequencies = Counter(sequence)
+    total_elements = len(sequence)
+    entropy = 0
+    for freq in frequencies.values():
+        probability = freq / total_elements
+        entropy -= probability * math.log2(probability)
+    return entropy

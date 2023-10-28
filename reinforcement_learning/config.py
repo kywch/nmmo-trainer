@@ -62,6 +62,7 @@ class Config:
     get_resource_criteria = 75
     get_resource_weight = 0.02
     heal_bonus_weight = 0.01
+    meander_bonus_weight = 0.02
 
     # Policy Args
     input_size = 256

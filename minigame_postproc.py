@@ -2,6 +2,7 @@ from collections import defaultdict
 import pufferlib
 import pufferlib.emulation
 from nmmo.entity.entity import EntityState
+from nmmo.lib.event_log import EventCode
 
 EntityAttr = EntityState.State.attr_name_to_col
 
@@ -97,8 +98,13 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
         )
         assert agent is not None
         self._update_stats(agent)
-        #log = self.env.realm.event_log.get_data(agents=[self.agent_id])
-        #attr_to_col = self.env.realm.event_log.attr_to_col
+
+        # For now, we only log EAT_FOOD, DRINK_WATER events
+        if self.env.config.RESOURCE_SYSTEM_ENABLED:
+            game_name = self.env.game.__class__.__name__
+            event_cnt = process_event_log(self.env.realm, self.agent_id)
+            for key, val in event_cnt.items():
+                info["stats"][game_name+"/"+key] = float(val)
 
         info["return"] = self.epoch_return
         info["length"] = self.epoch_length
@@ -121,3 +127,28 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
         return self.env.game.winners or \
                self.env.realm.tick >= self.env.realm.config.HORIZON or \
                self.env.realm.num_players == 0
+
+# convert the numbers into binary (performed or not) for the key events
+KEY_EVENT = [
+    "eat_food",
+    "drink_water",
+    "go_farthest",
+    "player_kill",
+]
+
+INFO_KEY_TO_EVENT_CODE = {
+    "event/" + evt.lower(): val
+    for evt, val in EventCode.__dict__.items()
+    if isinstance(val, int) and evt.lower() in KEY_EVENT
+}
+
+def process_event_log(realm, agent_list):
+    """Process the event log and extract performed actions and achievements."""
+    log = realm.event_log.get_data(agents=agent_list)
+    attr_to_col = realm.event_log.attr_to_col
+    # count the number of events
+    event_cnt = {}
+    for key, code in INFO_KEY_TO_EVENT_CODE.items():
+        # count the freq of each event
+        event_cnt[key] = int(sum(log[:, attr_to_col["event"]] == code))
+    return event_cnt

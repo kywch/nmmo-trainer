@@ -1,5 +1,7 @@
+import dill
 from nmmo.core.game_api import AgentTraining, TeamTraining, TeamBattle
 from nmmo.task import task_spec
+import nmmo.minigames.center_race as cr
 
 
 def combat_training_config(config, required_systems = ["TERRAIN", "COMBAT"]):
@@ -62,3 +64,21 @@ class MiniTeamBattle(TeamBattle):
         sampled_spec = self._get_cand_team_tasks(np_random, num_tasks=1, tags="team_battle")[0]
         return task_spec.make_task_from_spec(self.config.TEAMS,
                                              [sampled_spec] * len(self.config.TEAMS))
+
+class RacetoCenter(cr.RacetoCenter):
+    def is_compatible(self):
+        try:
+          with open(self.config.CURRICULUM_FILE_PATH, 'rb') as f:
+            dill.load(f) # a list of TaskSpec
+        except:
+          return False
+        return super().is_compatible()
+
+    def _define_tasks(self, np_random):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, 'rb') as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        race_task = [spec for spec in curriculum if "center_race" in spec.tags]
+        assert len(race_task == 1), "There should be only one task with the tag"
+        race_task *= self.config.PLAYER_N
+        return task_spec.make_task_from_spec(self.config.POSSIBLE_AGENTS, race_task)
