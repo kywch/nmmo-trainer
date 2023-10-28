@@ -137,8 +137,7 @@ KEY_EVENT = [
 ]
 
 INFO_KEY_TO_EVENT_CODE = {
-    "event/" + evt.lower(): val
-    for evt, val in EventCode.__dict__.items()
+    evt.lower(): val for evt, val in EventCode.__dict__.items()
     if isinstance(val, int) and evt.lower() in KEY_EVENT
 }
 
