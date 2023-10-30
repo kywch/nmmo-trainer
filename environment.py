@@ -13,10 +13,9 @@ import nmmo.core.config as cfg
 from nmmo.lib import material
 from nmmo.lib.event_log import EventCode
 from nmmo.entity.entity import EntityState
-from nmmo.minigames import RacetoCenter
 
 from minigame_postproc import MiniGamePostprocessor
-from team_games import MiniAgentTraining, MiniTeamTraining, MiniTeamBattle
+import team_games as tg
 
 EntityAttr = EntityState.State.attr_name_to_col
 IMPASSIBLE = list(material.Impassible.indices)
@@ -53,8 +52,8 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
         self.set("CURRICULUM_FILE_PATH", args.tasks_path)
         self.set("TASK_EMBED_DIM", args.task_size)
 
-        self.set("GAME_PACKS", [(MiniAgentTraining, 1), (MiniTeamTraining, 1),
-                                (MiniTeamBattle, 1), (RacetoCenter, 1)])
+        self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
+                                (tg.RacetoCenter, 1), (tg.ThreeTeamBattle, 1)])
 
 def make_env_creator(args: Namespace):
     def env_creator():
