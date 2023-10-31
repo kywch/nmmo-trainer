@@ -87,6 +87,7 @@ class Postprocessor(MiniGamePostprocessor):
             local_area_dist=0,
             concentrate_fire_weight=0,
             superior_fire_weight=0,
+            player_kill_weight=0,
             survival_mode_criteria=35,
             get_resource_criteria=75,
             get_resource_weight=0,
@@ -102,6 +103,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.local_area_dist = local_area_dist
         self.concentrate_fire_weight = concentrate_fire_weight
         self.superior_fire_weight = superior_fire_weight
+        self.player_kill_weight = player_kill_weight
 
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
@@ -220,6 +222,8 @@ class Postprocessor(MiniGamePostprocessor):
                 # Fire during superiority
                 if self._local_superiority > 0 and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
+                # Score kill
+                reward += self.player_kill_weight * self._player_kill
 
             if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
                 reward += self._eat_progress_bonus()
@@ -270,6 +274,7 @@ class Postprocessor(MiniGamePostprocessor):
 
         self._local_superiority = 0
         self._concentrate_fire = 0
+        self._player_kill = 0
         self._target_protect = []
         self._target_destroy = []
 
@@ -318,6 +323,12 @@ class Postprocessor(MiniGamePostprocessor):
             target_hits = tick_log[:,attr_to_col["target_ent"]] == my_target[0]
             # reward the single hit as well
             self._concentrate_fire = sum(target_hits)
+
+        # Player kill, from the agent's log
+        my_kill = (tick_log[:,attr_to_col["event"]] == EventCode.PLAYER_KILL) & \
+                  (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
+                  ~np.in1d(tick_log[:,attr_to_col["target_ent"]], self._my_task.assignee)
+        self._player_kill = float(sum(my_kill) > 0)
 
     def _update_resource_reward_vars(self, agent, tick_log, attr_to_col):
         if not self.env.config.RESOURCE_SYSTEM_ENABLED:
