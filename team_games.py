@@ -94,18 +94,24 @@ class ThreeTeamBattle(ga.TeamBattle):
 
     def _set_realm(self, np_random, map_dict):
         self.realm.reset(np_random, map_dict, custom_spawn=True)
-        # Custom spawning
-        candidate_locs = [(80, 80), (70, 70), (90, 90)]
-        for r, c in candidate_locs:
-            self.realm.map.make_spawnable(r, c)
+        # Custom spawning: candidate_locs should be a list of list of (row, col) tuples
+        candidate_locs = [[(80, 80)], [(70, 70)], [(90, 90)]]
+        # Also, one should make sure these locations are spawnable
+        for loc_list in candidate_locs:
+            for loc in loc_list:
+              self.realm.map.make_spawnable(*loc)
         team_loader = team_helper.TeamLoader(self.config, np_random, candidate_locs)
         self.realm.players.spawn(team_loader)
 
 class RacetoCenter(cr.RacetoCenter):
+    def __init__(self, env, sampling_weight=None):
+        super().__init__(env, sampling_weight)
+        self.map_center = 24  # start from a smaller map
+
     def is_compatible(self):
         try:
           with open(self.config.CURRICULUM_FILE_PATH, 'rb') as f:
-            dill.load(f) # a list of TaskSpec
+            dill.load(f)  # a list of TaskSpec
         except:
           return False
         return super().is_compatible()

@@ -119,6 +119,8 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             game_name = self.env.game.__class__.__name__
             for key, val in self.env.game.get_episode_stats().items():
                 info["stats"][game_name+"/"+key] = val
+            if game_name == "RacetoCenter":
+                info["stats"][game_name+"/map_center"] = self.env.game.map_center
 
         return reward, done, info
 
@@ -132,7 +134,6 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
 KEY_EVENT = [
     "eat_food",
     "drink_water",
-    "go_farthest",
     "player_kill",
 ]
 
