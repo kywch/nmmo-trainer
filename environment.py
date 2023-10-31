@@ -68,6 +68,7 @@ def make_env_creator(args: Namespace):
                 "local_area_dist": args.local_area_dist,
                 "concentrate_fire_weight": args.concentrate_fire_weight,
                 "superior_fire_weight": args.superior_fire_weight,
+                "player_kill_weight": args.player_kill_weight,
                 "survival_mode_criteria": args.survival_mode_criteria,
                 "get_resource_criteria": args.get_resource_criteria,
                 "get_resource_weight": args.get_resource_weight,
