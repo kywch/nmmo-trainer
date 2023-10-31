@@ -1,6 +1,6 @@
 import dill
-from nmmo.core.game_api import AgentTraining, TeamTraining, TeamBattle
 from nmmo.task import task_spec
+import nmmo.core.game_api as ga
 import nmmo.minigames.center_race as cr
 from nmmo.lib import team_helper
 
@@ -26,7 +26,7 @@ def combat_training_config(config, required_systems = ["TERRAIN", "COMBAT"]):
     # Small health regen every tick
     config.set_for_episode("PLAYER_HEALTH_INCREMENT", True)
 
-class MiniAgentTraining(AgentTraining):
+class MiniAgentTraining(ga.AgentTraining):
     required_systems = ["TERRAIN", "RESOURCE", "COMBAT"]
 
     def is_compatible(self):
@@ -45,7 +45,7 @@ class MiniAgentTraining(AgentTraining):
         # Only the center tile is safe
         self.config.set_for_episode("PLAYER_DEATH_FOG_FINAL_SIZE", 0)
 
-class MiniTeamTraining(TeamTraining):
+class MiniTeamTraining(ga.TeamTraining):
     required_systems = ["TERRAIN", "COMBAT"]
 
     def is_compatible(self):
@@ -54,7 +54,7 @@ class MiniTeamTraining(TeamTraining):
     def _set_config(self):
         combat_training_config(self.config)
 
-class MiniTeamBattle(TeamBattle):
+class MiniTeamBattle(ga.TeamBattle):
     required_systems = ["TERRAIN", "COMBAT"]
 
     def is_compatible(self):
@@ -68,7 +68,7 @@ class MiniTeamBattle(TeamBattle):
         return task_spec.make_task_from_spec(self.config.TEAMS,
                                              [sampled_spec] * len(self.config.TEAMS))
 
-class ThreeTeamBattle(TeamBattle):
+class ThreeTeamBattle(ga.TeamBattle):
     required_systems = ["TERRAIN", "COMBAT"]
 
     def is_compatible(self):

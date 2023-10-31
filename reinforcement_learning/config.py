@@ -57,6 +57,7 @@ class Config:
     local_superiority_weight = 0.01
     local_area_dist = 5
     concentrate_fire_weight = 0.01
+    superior_fire_weight = 0.03
 
     survival_mode_criteria = 35  # of the health, food, water levels
     get_resource_criteria = 75

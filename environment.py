@@ -67,6 +67,7 @@ def make_env_creator(args: Namespace):
                 "local_superiority_weight": args.local_superiority_weight,
                 "local_area_dist": args.local_area_dist,
                 "concentrate_fire_weight": args.concentrate_fire_weight,
+                "superior_fire_weight": args.superior_fire_weight,
                 "survival_mode_criteria": args.survival_mode_criteria,
                 "get_resource_criteria": args.get_resource_criteria,
                 "get_resource_weight": args.get_resource_weight,
@@ -85,6 +86,7 @@ class Postprocessor(MiniGamePostprocessor):
             local_superiority_weight=0,
             local_area_dist=0,
             concentrate_fire_weight=0,
+            superior_fire_weight=0,
             survival_mode_criteria=35,
             get_resource_criteria=75,
             get_resource_weight=0,
@@ -99,6 +101,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.local_superiority_weight = local_superiority_weight
         self.local_area_dist = local_area_dist
         self.concentrate_fire_weight = concentrate_fire_weight
+        self.superior_fire_weight = superior_fire_weight
 
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
@@ -135,8 +138,8 @@ class Postprocessor(MiniGamePostprocessor):
     def observation_space(self):
         """If you modify the shape of features, you need to specify the new obs space"""
         obs_space = super().observation_space
-        # Add informative tile maps: dist, obstacle, entity
-        add_dim = 3
+        # Add informative tile maps: dist, obstacle, food, water, entity
+        add_dim = 5
         tile_dim = obs_space["Tile"].shape[1] + add_dim
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
@@ -172,8 +175,10 @@ class Postprocessor(MiniGamePostprocessor):
         entity = self._entity_map[obs["Tile"][:,0], obs["Tile"][:,1]]
 
         dist = self._dist_map[obs["Tile"][:,0], obs["Tile"][:,1]]
-        obstacle = np.isin(obs["Tile"][:,2], IMPASSIBLE)
-        maps = [obs["Tile"], dist[:,None], obstacle[:,None], entity[:,None]]
+        obstacle = np.isin(obs["Tile"][:,2], [material.Stone.index, material.Void.index])
+        food = obs["Tile"][:,2] == material.Foilage.index
+        water = obs["Tile"][:,2] == material.Water.index
+        maps = [obs["Tile"], dist[:,None], obstacle[:,None], food[:,None], water[:,None], entity[:,None]]
         return np.concatenate(maps, axis=1).astype(np.int16)
 
     def _process_attack_mask(self, obs):
@@ -212,6 +217,9 @@ class Postprocessor(MiniGamePostprocessor):
                 reward += self.local_superiority_weight * self._local_superiority
                 # Concentrate fire bonus
                 reward += self.concentrate_fire_weight * self._concentrate_fire
+                # Fire during superiority
+                if self._local_superiority > 0 and self._concentrate_fire > 0:
+                    reward += self.superior_fire_weight
 
             if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
                 reward += self._eat_progress_bonus()

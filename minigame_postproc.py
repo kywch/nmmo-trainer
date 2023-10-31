@@ -104,7 +104,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             game_name = self.env.game.__class__.__name__
             event_cnt = process_event_log(self.env.realm, self.agent_id)
             for key, val in event_cnt.items():
-                info["stats"][game_name+"/"+key] = float(val)
+                info["stats"][game_name+"/"+key] = float(val > 0)  # whether an agent did it
 
         info["return"] = self.epoch_return
         info["length"] = self.epoch_length
