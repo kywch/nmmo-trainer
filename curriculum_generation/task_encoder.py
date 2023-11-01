@@ -155,10 +155,11 @@ class TaskEncoder:
 
 if __name__ == "__main__":
     import curriculum_generation.manual_curriculum as curriculum
-    LLM_CHECKPOINT = "Salesforce/codegen25-7b-instruct"
+    LLM_CHECKPOINT = "Salesforce/codegen-350m-mono"  # "codegen25-7b-instruct"
     CURRICULUM_FILE_PATH = "reinforcement_learning/curriculum_with_embedding.pkl"
 
     with TaskEncoder(LLM_CHECKPOINT, curriculum, batch_size=6) as task_encoder:
+        assert task_encoder.embed_dim == 1024, "Embed_dim must be 1024 with the codegen-350m model"
         task_encoder.get_task_embedding(
             curriculum.curriculum,
             save_to_file=CURRICULUM_FILE_PATH

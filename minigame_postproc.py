@@ -83,7 +83,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             done = True
             reward = -1.0
             if self.env.game.winners and self.agent_id in self.env.game.winners:
-                reward = 1.0
+                reward = self.env.game.winning_score
 
         if not done:
             self.epoch_length += 1
@@ -123,6 +123,10 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"].pop(game_name+"/player_kill")
                 info["stats"][game_name+"/map_center"] = self.env.game.map_center
                 info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
+                info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
+            if game_name == "UnfairFight":
+                info["stats"][game_name+"/defense_size"] = self.env.game.defense_size
+                info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
 
         return reward, done, info
 

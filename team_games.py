@@ -1,7 +1,7 @@
 import dill
 from nmmo.task import task_spec
 import nmmo.core.game_api as ga
-import nmmo.minigames.center_race as cr
+import nmmo.minigames as mg
 from nmmo.lib import team_helper
 
 
@@ -36,7 +36,7 @@ class MiniAgentTraining(ga.AgentTraining):
         self.config.reset()
         self.config.toggle_systems(self.required_systems)
 
-        # The default option doesn't provide enough resources
+        # The default option does not provide enough resources
         self.config.set_for_episode("TERRAIN_SCATTER_EXTRA_RESOURCES", True)
 
         # fog setting for the race to center
@@ -68,7 +68,7 @@ class MiniTeamBattle(ga.TeamBattle):
         return task_spec.make_task_from_spec(self.config.TEAMS,
                                              [sampled_spec] * len(self.config.TEAMS))
 
-class ThreeTeamBattle(ga.TeamBattle):
+class FiveTeamBattle(ga.TeamBattle):
     required_systems = ["TERRAIN", "COMBAT"]
 
     def is_compatible(self):
@@ -76,11 +76,13 @@ class ThreeTeamBattle(ga.TeamBattle):
 
     @staticmethod
     def teams(num_players):
-        num_agent = num_players // 3
+        num_agent = num_players // 5
         return {
             "team1": list(range(1, num_agent+1)),
             "team2": list(range(num_agent+1, 2*num_agent+1)),
-            "team3": list(range(2*num_agent+1, num_players+1)),
+            "team3": list(range(2*num_agent+1, 3*num_agent+1)),
+            "team4": list(range(3*num_agent+1, 4*num_agent+1)),
+            "team5": list(range(4*num_agent+1, num_players+1)),
         }
 
     def _set_config(self):
@@ -95,7 +97,7 @@ class ThreeTeamBattle(ga.TeamBattle):
     def _set_realm(self, np_random, map_dict):
         self.realm.reset(np_random, map_dict, custom_spawn=True)
         # Custom spawning: candidate_locs should be a list of list of (row, col) tuples
-        candidate_locs = [[(80, 80)], [(70, 70)], [(90, 90)]]
+        candidate_locs = [[(70, 70)], [(90, 90)], [(70, 90)], [(90, 70)], [(80, 80)]]
         # Also, one should make sure these locations are spawnable
         for loc_list in candidate_locs:
             for loc in loc_list:
@@ -103,14 +105,14 @@ class ThreeTeamBattle(ga.TeamBattle):
         team_loader = team_helper.TeamLoader(self.config, np_random, candidate_locs)
         self.realm.players.spawn(team_loader)
 
-class RacetoCenter(cr.RacetoCenter):
+class RacetoCenter(mg.RacetoCenter):
     def __init__(self, env, sampling_weight=None):
         super().__init__(env, sampling_weight)
         self.map_center = 24  # start from a smaller map
 
     def is_compatible(self):
         try:
-          with open(self.config.CURRICULUM_FILE_PATH, 'rb') as f:
+          with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
             dill.load(f)  # a list of TaskSpec
         except:
           return False
@@ -118,9 +120,27 @@ class RacetoCenter(cr.RacetoCenter):
 
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
-        with open(self.config.CURRICULUM_FILE_PATH, 'rb') as f:
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
         race_task = [spec for spec in curriculum if "center_race" in spec.tags]
         assert len(race_task) == 1, "There should be only one task with the tag"
         race_task *= self.config.PLAYER_N
         return task_spec.make_task_from_spec(self.config.POSSIBLE_AGENTS, race_task)
+
+class UnfairFight(mg.UnfairFight):
+    def is_compatible(self):
+        try:
+          with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+            dill.load(f)  # a list of TaskSpec
+        except:
+          return False
+        return super().is_compatible()
+
+    def _define_tasks(self, np_random):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        def_task = [spec for spec in curriculum if "unfair_def" in spec.tags]
+        off_task = [spec for spec in curriculum if "team_battle" in spec.tags and "all_foes" in spec.tags]
+        assert len(def_task) == 1 and len(off_task) == 1, "There should be one and only task with the tags"
+        return task_spec.make_task_from_spec(self.teams, def_task + off_task)

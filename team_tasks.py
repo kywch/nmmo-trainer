@@ -14,7 +14,8 @@ curriculum: List[TaskSpec] = []
 
 # Stay alive as long as possible
 curriculum.append(
-    TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": 200})
+    TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": 160},
+             tags=["unfair_def"])
 )
 
 def ProtectAgent(gs, subject, target_protect, num_tick):  # for num_ticks
@@ -43,7 +44,7 @@ for target in ["left_team", "left_team_leader", "right_team", "right_team_leader
                  eval_fn_kwargs={"target": target, "status": "dead"},
                  sampling_weight=10,
                  reward_to="team",
-                 tags=["team_battle"]))
+                 tags=["team_battle", target]))
 
 for target in ["left_team_leader", "right_team_leader"]:
     curriculum.append(
@@ -127,10 +128,11 @@ if __name__ == "__main__":
     print("------------------------------------------------------------")
     print("Generating the task spec with embedding file ...")
     from curriculum_generation.task_encoder import TaskEncoder
-    LLM_CHECKPOINT = "Salesforce/codegen25-7b-instruct"
+    LLM_CHECKPOINT = "Salesforce/codegen-350m-mono"  # "Salesforce/codegen25-7b-instruct"
 
     # Get the task embeddings for the training tasks and save to file
     # You need to provide the curriculum file as a module to the task encoder
     with TaskEncoder(LLM_CHECKPOINT, team_tasks) as task_encoder:
+        assert task_encoder.embed_dim == 1024, "Embed_dim must be 1024 with the codegen-350m model"
         task_encoder.get_task_embedding(CURRICULUM, save_to_file=CURRICULUM_FILE_PATH)
     print("Done.")

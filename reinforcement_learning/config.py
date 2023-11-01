@@ -70,7 +70,7 @@ class Config:
     input_size = 256
     hidden_size = 256
     num_lstm_layers = 0  # Number of LSTM layers to use
-    task_size = 4096  # Size of task embedding
+    task_size = 1024  # 1024 with codegen-350m, 4096 with codegen2-7b
     encode_task = True  # Encode task
     attend_task = "none"  # Attend task - options: none, pytorch, nikhil
     attentional_decode = True  # Use attentional action decoder
