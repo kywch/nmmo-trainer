@@ -122,11 +122,15 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             if game_name == "RacetoCenter":
                 info["stats"].pop(game_name+"/player_kill")
                 info["stats"][game_name+"/map_center"] = self.env.game.map_center
-                info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
+                if self.env.game.winners is not None:
+                  info["stats"][game_name+"/game_won"] = True
+                  info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
             if game_name == "UnfairFight":
                 info["stats"][game_name+"/defense_size"] = self.env.game.defense_size
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
+                if self.env.game.winners is not None and self.env.game.winners[0] in self.env.game.teams["offense"]:
+                  info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
 
         return reward, done, info
 

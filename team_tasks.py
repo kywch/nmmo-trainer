@@ -7,14 +7,20 @@ from nmmo.task.base_predicates import *
 from nmmo.task.task_spec import TaskSpec, check_task_spec
 from nmmo.minigames.center_race import ProgressTowardCenter
 
-TICK_GOAL = [10, 30, 50, 70, 100, 150, 200, 256]
+TICK_GOAL = [30, 50, 70, 100, 150, 200, 256]
 ENTITY_GOAL = [1, 2, 3, 5, 7, 10]
 
 curriculum: List[TaskSpec] = []
 
 # Stay alive as long as possible
+for ticks in TICK_GOAL:
+  curriculum.append(
+      TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": ticks})
+  )
+
 curriculum.append(
     TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": 160},
+             reward_to="team",
              tags=["unfair_def"])
 )
 
