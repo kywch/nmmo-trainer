@@ -220,8 +220,8 @@ class Postprocessor(MiniGamePostprocessor):
                 reward += self.local_superiority_weight * self._local_superiority
                 # Concentrate fire bonus
                 reward += self.concentrate_fire_weight * self._concentrate_fire
-                # Fire during superiority
-                if self._local_superiority > 0 and self._concentrate_fire > 0:
+                # Fire during superiority -- try to make agents aggressive when having number advantage
+                if (self._vof_superiority > 0 or self._local_superiority > 0) and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
                 # Score kill
                 reward += self.player_kill_weight * self._player_kill
@@ -236,7 +236,6 @@ class Postprocessor(MiniGamePostprocessor):
                 if len(self._prev_moves) > 5:
                   move_entropy = calculate_entropy(self._prev_moves[-8:])  # of last 8 moves
                   reward += self.meander_bonus_weight * (move_entropy - 1)
-
 
         return reward, done, info
 
@@ -274,6 +273,7 @@ class Postprocessor(MiniGamePostprocessor):
         self._prev_moves = []
 
         self._local_superiority = 0
+        self._vof_superiority = 0
         self._concentrate_fire = 0
         self._player_kill = 0
         self._target_protect = []
@@ -314,6 +314,10 @@ class Postprocessor(MiniGamePostprocessor):
         num_enemy = np.sum(local_map == ENEMY_REPR)
         # TODO: add the distance-based bonus?
         self._local_superiority = np.sum(local_map == TEAMMATE_REPR) - num_enemy if num_enemy > 0 else 0
+
+        # Visual field superioirty, but count only when enemies are nearby
+        self._vof_superiority = np.sum(self._entity_map == TEAMMATE_REPR) - np.sum(self._entity_map == ENEMY_REPR)\
+                                if num_enemy > 0 else 0
 
         # Concentrate fire, get from the agent's log
         self._concentrate_fire = 0
