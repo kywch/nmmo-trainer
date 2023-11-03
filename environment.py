@@ -53,7 +53,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
         self.set("TASK_EMBED_DIM", args.task_size)
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
-                                (tg.RacetoCenter, 1), (tg.FourTeamBattle, 1), (tg.UnfairFight, 1),])
+                                (tg.RacetoCenter, 1), (tg.UnfairFight, 1), (tg.KingoftheHill, 1),])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -223,6 +223,9 @@ class Postprocessor(MiniGamePostprocessor):
                 # Fire during superiority -- try to make agents aggressive when having number advantage
                 if (self._vof_superiority > 0 or self._local_superiority > 0) and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
+                # Team bonus for higher fire utilization, when superior
+                if self._vof_superiority > 0 and self._team_fire_utilization > 0:
+                    reward += self.superior_fire_weight*self._team_fire_utilization
                 # Score kill
                 reward += self.player_kill_weight * self._player_kill
 
@@ -275,6 +278,7 @@ class Postprocessor(MiniGamePostprocessor):
         self._local_superiority = 0
         self._vof_superiority = 0
         self._concentrate_fire = 0
+        self._team_fire_utilization = 0
         self._player_kill = 0
         self._target_protect = []
         self._target_destroy = []
@@ -329,10 +333,18 @@ class Postprocessor(MiniGamePostprocessor):
             # reward the single hit as well
             self._concentrate_fire = sum(target_hits)
 
+        # Team fire utilization
+        my_team = self._my_task.assignee
+        self._team_fire_utilization = 0
+        team_fire = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
+                    np.in1d(tick_log[:,attr_to_col["ent_id"]], my_team)
+        if len(my_team) > 1 and sum(team_fire) >= max(2,int(len(my_team)**.5)):
+            self._team_fire_utilization = float(sum(team_fire)) / len(my_team)
+
         # Player kill, from the agent's log
         my_kill = (tick_log[:,attr_to_col["event"]] == EventCode.PLAYER_KILL) & \
                   (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
-                  ~np.in1d(tick_log[:,attr_to_col["target_ent"]], self._my_task.assignee)
+                  ~np.in1d(tick_log[:,attr_to_col["target_ent"]], my_team)
         self._player_kill = float(sum(my_kill) > 0)
 
     def _update_resource_reward_vars(self, agent, tick_log, attr_to_col):

@@ -119,18 +119,19 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             game_name = self.env.game.__class__.__name__
             for key, val in self.env.game.get_episode_stats().items():
                 info["stats"][game_name+"/"+key] = val
-            if game_name == "RacetoCenter":
-                info["stats"].pop(game_name+"/player_kill")
+            if game_name in ["RacetoCenter", "KingoftheHill"]:
                 info["stats"][game_name+"/map_center"] = self.env.game.map_center
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
-                if self.env.game.winners is not None:
-                  info["stats"][game_name+"/game_won"] = True
-                  info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
+                if self.env.game.winners:
+                    info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
             if game_name == "UnfairFight":
                 info["stats"][game_name+"/defense_size"] = self.env.game.defense_size
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
-                if self.env.game.winners is not None and self.env.game.winners[0] in self.env.game.teams["offense"]:
-                  info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
+                if self.env.game.winners:
+                    offense_won = 1 not in self.env.game.winners
+                    info["stats"][game_name+"/offense_won"] = offense_won
+                    if offense_won:
+                        info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
 
         return reward, done, info
 

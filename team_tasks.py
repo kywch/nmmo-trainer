@@ -5,7 +5,7 @@ from typing import List
 
 from nmmo.task.base_predicates import *
 from nmmo.task.task_spec import TaskSpec, check_task_spec
-from nmmo.minigames.center_race import ProgressTowardCenter
+import nmmo.minigames as mg
 
 TICK_GOAL = [30, 50, 70, 100, 150, 200, 256]
 ENTITY_GOAL = [1, 2, 3, 5, 7, 10]
@@ -92,11 +92,23 @@ for event_code in ["EAT_FOOD", "DRINK_WATER"]:
         )
 
 curriculum.append(
-    TaskSpec(eval_fn=ProgressTowardCenter,
+    TaskSpec(eval_fn=mg.ProgressTowardCenter,
              eval_fn_kwargs={},
              sampling_weight=3,
              reward_to="agent",
              tags=["center_race"]))
+
+for seize_dur in [1, 3, 5, 7, 10, 15, 20, 30, 40, 50]:
+    curriculum.append(
+        TaskSpec(eval_fn=mg.SeizeCenter,
+                 eval_fn_kwargs={"num_ticks": seize_dur},
+                 reward_to="team"))
+
+curriculum.append(
+    TaskSpec(eval_fn=mg.SeizeCenter,
+              eval_fn_kwargs={"num_ticks": 30},
+              reward_to="team",
+              tags=["king_hill"]))
 
 
 if __name__ == "__main__":
