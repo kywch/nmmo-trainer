@@ -120,6 +120,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             for key, val in self.env.game.get_episode_stats().items():
                 info["stats"][game_name+"/"+key] = val
             if game_name in ["RacetoCenter", "KingoftheHill"]:
+                info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
                 info["stats"][game_name+"/map_center"] = self.env.game.map_center
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
                 if self.env.game.winners:
@@ -131,7 +132,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                     offense_won = 1 not in self.env.game.winners
                     info["stats"][game_name+"/offense_won"] = offense_won
                     if offense_won:
-                        info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
+                        info["stats"][game_name+"/offense_win_score"] = self.env.game.winning_score
 
         return reward, done, info
 
