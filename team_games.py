@@ -68,7 +68,7 @@ class MiniTeamBattle(ga.TeamBattle):
         return task_spec.make_task_from_spec(self.config.TEAMS,
                                              [sampled_spec] * len(self.config.TEAMS))
 
-class FiveTeamBattle(ga.TeamBattle):
+class FourTeamBattle(ga.TeamBattle):
     required_systems = ["TERRAIN", "COMBAT"]
 
     def is_compatible(self):
@@ -76,13 +76,12 @@ class FiveTeamBattle(ga.TeamBattle):
 
     @staticmethod
     def teams(num_players):
-        num_agent = num_players // 5
+        num_agent = num_players // 4
         return {
             "team1": list(range(1, num_agent+1)),
             "team2": list(range(num_agent+1, 2*num_agent+1)),
             "team3": list(range(2*num_agent+1, 3*num_agent+1)),
-            "team4": list(range(3*num_agent+1, 4*num_agent+1)),
-            "team5": list(range(4*num_agent+1, num_players+1)),
+            "team4": list(range(3*num_agent+1, num_players+1)),
         }
 
     def _set_config(self):
@@ -97,7 +96,7 @@ class FiveTeamBattle(ga.TeamBattle):
     def _set_realm(self, np_random, map_dict):
         self.realm.reset(np_random, map_dict, custom_spawn=True)
         # Custom spawning: candidate_locs should be a list of list of (row, col) tuples
-        candidate_locs = [[(70, 70)], [(90, 90)], [(70, 90)], [(90, 70)], [(80, 80)]]
+        candidate_locs = [[(70, 70)], [(90, 90)], [(70, 90)], [(90, 70)]]
         # Also, one should make sure these locations are spawnable
         for loc_list in candidate_locs:
             for loc in loc_list:
