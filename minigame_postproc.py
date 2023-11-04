@@ -3,6 +3,7 @@ import pufferlib
 import pufferlib.emulation
 from nmmo.entity.entity import EntityState
 from nmmo.lib.event_log import EventCode
+import team_games as tg
 
 EntityAttr = EntityState.State.attr_name_to_col
 
@@ -119,13 +120,13 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             game_name = self.env.game.__class__.__name__
             for key, val in self.env.game.get_episode_stats().items():
                 info["stats"][game_name+"/"+key] = val
-            if game_name in ["RacetoCenter", "KingoftheHill"]:
+            if isinstance(self.env.game, tg.RacetoCenter) or isinstance(self.env.game, tg.KingoftheHill):
                 info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
                 info["stats"][game_name+"/map_center"] = self.env.game.map_center
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
                 if self.env.game.winners:
                     info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
-            if game_name == "UnfairFight":
+            if isinstance(self.env.game, tg.UnfairFight):
                 info["stats"][game_name+"/defense_size"] = self.env.game.defense_size
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
                 if self.env.game.winners:
@@ -133,6 +134,10 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                     info["stats"][game_name+"/offense_won"] = offense_won
                     if offense_won:
                         info["stats"][game_name+"/offense_win_score"] = self.env.game.winning_score
+            if isinstance(self.env.game, tg.KingoftheHill):
+                  max_progress = [task.progress_info["max_progress"] for task in self.env.game.tasks]
+                  info["stats"][game_name+"/max_progress"] = max(max_progress)
+                  info["stats"][game_name+"/avg_max_prog"] = sum(max_progress)/len(max_progress)
 
         return reward, done, info
 

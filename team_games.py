@@ -125,3 +125,12 @@ class KingoftheHill(mg.KingoftheHill):
         team_task[0].eval_fn_kwargs={"num_ticks": self.seize_duration}
         team_task *= len(self.teams)
         return task_spec.make_task_from_spec(self.teams, team_task)
+
+class EasyKingoftheHill(KingoftheHill):
+    def _set_config(self):
+        super()._set_config()
+        # make the game easier by decreasing the resource demands/penalty
+        self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 2)
+        self.config.set_for_episode("RESOURCE_STARVATION_RATE", 3)
+        self.config.set_for_episode("RESOURCE_DEHYDRATION_RATE", 3)
+        self.config.set_for_episode("RESOURCE_HEALTH_RESTORE_FRACTION", .02)
