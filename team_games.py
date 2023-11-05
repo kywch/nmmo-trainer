@@ -104,6 +104,16 @@ class UnfairFight(mg.UnfairFight):
         assert len(fight_task) == 1, "There should be one and only task with the tags"
         return task_spec.make_task_from_spec(self.teams, fight_task*2)
 
+class TwoTeamHeadhunt(UnfairFight):
+    def _define_tasks(self, np_random):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        fight_task = [spec for spec in curriculum if spec.eval_fn.__name__ == "HeadHunting"]
+        np_random.shuffle(fight_task)  # shuffle left and right
+        #assert len(fight_task) == 1, "There should be one and only task with the tags"
+        return task_spec.make_task_from_spec(self.teams, [fight_task[0]]*2)
+
 class KingoftheHill(mg.KingoftheHill):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
