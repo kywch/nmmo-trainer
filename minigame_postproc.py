@@ -130,11 +130,13 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 if self.env.game.winners:
                     info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
             if isinstance(self.env.game, tg.UnfairFight):
-                if self.env.game.winners:
-                    large_won = 1 not in self.env.game.winners
-                    info["stats"][game_name+"/large_won"] = large_won
-                    if large_won:
-                        info["stats"][game_name+"/large_win_score"] = self.env.game.winning_score
+                num_win_alive = sum(1 for agent_id in self.env.game.winners
+                                    if agent_id in self.env.realm.players)
+                info["stats"][game_name+"/num_win_alive"] = num_win_alive
+                large_won = 1 not in self.env.game.winners
+                info["stats"][game_name+"/large_won"] = large_won
+                if large_won:
+                    info["stats"][game_name+"/large_win_score"] = self.env.game.winning_score
             if isinstance(self.env.game, tg.KingoftheHill):
                   info["stats"][game_name+"/seize_duration"] = self.env.game.seize_duration
 
