@@ -76,6 +76,8 @@ class MiniTeamBattle(ga.TeamBattle):
                                              [sampled_spec] * len(self.config.TEAMS))
 
 class RacetoCenter(mg.RacetoCenter):
+    num_game_won = 2  # wins to make the game harder
+
     def __init__(self, env, sampling_weight=None):
         super().__init__(env, sampling_weight)
         self._map_size = 24  # start from a smaller map
@@ -115,6 +117,8 @@ class TwoTeamHeadhunt(UnfairFight):
         return task_spec.make_task_from_spec(self.teams, [fight_task[0]]*2)
 
 class KingoftheHill(mg.KingoftheHill):
+    num_game_won = 2  # wins to make the game harder
+
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
