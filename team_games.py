@@ -25,6 +25,14 @@ def combat_training_config(config, required_systems = ["TERRAIN", "COMBAT"]):
     # Small health regen every tick
     config.set_for_episode("PLAYER_HEALTH_INCREMENT", True)
 
+def check_curriculum_file(config):
+    try:
+        with open(config.CURRICULUM_FILE_PATH, "rb") as f:
+            dill.load(f)  # a list of TaskSpec
+        return True
+    except:
+        return False
+
 class MiniAgentTraining(ga.AgentTraining):
     required_systems = ["TERRAIN", "RESOURCE", "COMBAT"]
 
@@ -73,12 +81,7 @@ class RacetoCenter(mg.RacetoCenter):
         self.map_center = 24  # start from a smaller map
 
     def is_compatible(self):
-        try:
-          with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
-            dill.load(f)  # a list of TaskSpec
-        except:
-          return False
-        return super().is_compatible()
+        return check_curriculum_file(self.config) and super().is_compatible()
 
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
@@ -91,12 +94,7 @@ class RacetoCenter(mg.RacetoCenter):
 
 class UnfairFight(mg.UnfairFight):
     def is_compatible(self):
-        try:
-          with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
-            dill.load(f)  # a list of TaskSpec
-        except:
-          return False
-        return super().is_compatible()
+        return check_curriculum_file(self.config) and super().is_compatible()
 
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
@@ -107,14 +105,12 @@ class UnfairFight(mg.UnfairFight):
         assert len(def_task) == 1 and len(off_task) == 1, "There should be one and only task with the tags"
         return task_spec.make_task_from_spec(self.teams, def_task + off_task)
 
+class UnfairFightNoFog(UnfairFight):
+    enable_death_fog = False
+
 class KingoftheHill(mg.KingoftheHill):
     def is_compatible(self):
-        try:
-          with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
-            dill.load(f)  # a list of TaskSpec
-        except:
-          return False
-        return super().is_compatible()
+        return check_curriculum_file(self.config) and super().is_compatible()
 
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
@@ -131,6 +127,6 @@ class EasyKingoftheHill(KingoftheHill):
         super()._set_config()
         # make the game easier by decreasing the resource demands/penalty
         self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 2)
-        self.config.set_for_episode("RESOURCE_STARVATION_RATE", 3)
-        self.config.set_for_episode("RESOURCE_DEHYDRATION_RATE", 3)
+        self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)  # 100%
+        self.config.set_for_episode("RESOURCE_DAMAGE_REDUCTION", 0.2)  # reduce to 20%
         self.config.set_for_episode("RESOURCE_HEALTH_RESTORE_FRACTION", .02)

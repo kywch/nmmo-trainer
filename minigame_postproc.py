@@ -122,7 +122,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/"+key] = val
             if isinstance(self.env.game, tg.RacetoCenter) or isinstance(self.env.game, tg.KingoftheHill):
                 info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
-                info["stats"][game_name+"/map_center"] = self.env.game.map_center
+                info["stats"][game_name+"/map_center"] = self.env.game.map_size  # TODO: rename to map size
                 info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
                 if self.env.game.winners:
                     info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
