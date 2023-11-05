@@ -78,7 +78,7 @@ class MiniTeamBattle(ga.TeamBattle):
 class RacetoCenter(mg.RacetoCenter):
     def __init__(self, env, sampling_weight=None):
         super().__init__(env, sampling_weight)
-        self.map_center = 24  # start from a smaller map
+        self._map_size = 24  # start from a smaller map
 
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()

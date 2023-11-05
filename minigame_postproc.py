@@ -120,24 +120,24 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             game_name = self.env.game.__class__.__name__
             for key, val in self.env.game.get_episode_stats().items():
                 info["stats"][game_name+"/"+key] = val
+            info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
             if isinstance(self.env.game, tg.RacetoCenter) or isinstance(self.env.game, tg.KingoftheHill):
                 info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
-                info["stats"][game_name+"/map_center"] = self.env.game.map_size  # TODO: rename to map size
-                info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
+                info["stats"][game_name+"/map_size"] = self.env.game.map_size
+                max_progress = [task.progress_info["max_progress"] for task in self.env.game.tasks]
+                info["stats"][game_name+"/max_progress"] = max(max_progress)
+                info["stats"][game_name+"/avg_max_prog"] = sum(max_progress)/len(max_progress)
                 if self.env.game.winners:
                     info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
             if isinstance(self.env.game, tg.UnfairFight):
                 info["stats"][game_name+"/defense_size"] = self.env.game.defense_size
-                info["stats"][game_name+"/finished_tick"] = self.env.realm.tick
                 if self.env.game.winners:
                     offense_won = 1 not in self.env.game.winners
                     info["stats"][game_name+"/offense_won"] = offense_won
                     if offense_won:
                         info["stats"][game_name+"/offense_win_score"] = self.env.game.winning_score
             if isinstance(self.env.game, tg.KingoftheHill):
-                  max_progress = [task.progress_info["max_progress"] for task in self.env.game.tasks]
-                  info["stats"][game_name+"/max_progress"] = max(max_progress)
-                  info["stats"][game_name+"/avg_max_prog"] = sum(max_progress)/len(max_progress)
+                  info["stats"][game_name+"/seize_duration"] = self.env.game.seize_duration
 
         return reward, done, info
 

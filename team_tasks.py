@@ -98,7 +98,7 @@ curriculum.append(
              reward_to="agent",
              tags=["center_race"]))
 
-for seize_dur in [1, 3, 5, 7, 10, 15, 20, 30, 40, 50]:
+for seize_dur in range(10, 91, 10):
     curriculum.append(
         TaskSpec(eval_fn=mg.SeizeCenter,
                  eval_fn_kwargs={"num_ticks": seize_dur},
@@ -106,7 +106,7 @@ for seize_dur in [1, 3, 5, 7, 10, 15, 20, 30, 40, 50]:
 
 curriculum.append(
     TaskSpec(eval_fn=mg.SeizeCenter,
-             eval_fn_kwargs={"num_ticks": 30},
+             eval_fn_kwargs={"num_ticks": 100},
              reward_to="team",
              tags=["king_hill"]))
 
