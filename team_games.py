@@ -100,13 +100,9 @@ class UnfairFight(mg.UnfairFight):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        def_task = [spec for spec in curriculum if "unfair_def" in spec.tags]
-        off_task = [spec for spec in curriculum if "team_battle" in spec.tags and "all_foes" in spec.tags]
-        assert len(def_task) == 1 and len(off_task) == 1, "There should be one and only task with the tags"
-        return task_spec.make_task_from_spec(self.teams, def_task + off_task)
-
-class UnfairFightNoFog(UnfairFight):
-    enable_death_fog = False
+        fight_task = [spec for spec in curriculum if "team_battle" in spec.tags and "all_foes" in spec.tags]
+        assert len(fight_task) == 1, "There should be one and only task with the tags"
+        return task_spec.make_task_from_spec(self.teams, fight_task*2)
 
 class KingoftheHill(mg.KingoftheHill):
     def is_compatible(self):
