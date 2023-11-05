@@ -132,13 +132,14 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/avg_max_prog"] = sum(max_progress)/len(max_progress)
 
             if isinstance(self.env.game, tg.UnfairFight):
-                large_won = 1 not in self.env.game.winners
-                info["stats"][game_name+"/large_won"] = large_won
                 info["stats"][game_name+"/time_limit"] = self.env.game.time_limit
-                # get the kills by the win team
-                kill_log = self.env.realm.event_log.get_data(agents=self.env.game.winners,
-                                                             event_code=EventCode.PLAYER_KILL)
-                info["stats"][game_name+"/win_kill_count"] = kill_log.shape[0]
+                if self.env.game.winners:
+                    large_won = 1 not in self.env.game.winners
+                    info["stats"][game_name+"/large_won"] = large_won
+                    # get the kills by the win team
+                    kill_log = self.env.realm.event_log.get_data(agents=self.env.game.winners,
+                                                                event_code=EventCode.PLAYER_KILL)
+                    info["stats"][game_name+"/win_kill_count"] = kill_log.shape[0]
 
             if isinstance(self.env.game, tg.KingoftheHill):
                 info["stats"][game_name+"/seize_duration"] = self.env.game.seize_duration
