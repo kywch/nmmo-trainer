@@ -69,7 +69,7 @@ def make_env_creator(args: Namespace):
                 "local_area_dist": args.local_area_dist,
                 "concentrate_fire_weight": args.concentrate_fire_weight,
                 "superior_fire_weight": args.superior_fire_weight,
-                "player_kill_weight": args.player_kill_weight,
+                "key_achievement_weight": args.key_achievement_weight,
                 "survival_mode_criteria": args.survival_mode_criteria,
                 "get_resource_criteria": args.get_resource_criteria,
                 "get_resource_weight": args.get_resource_weight,
@@ -89,7 +89,7 @@ class Postprocessor(MiniGamePostprocessor):
             local_area_dist=0,
             concentrate_fire_weight=0,
             superior_fire_weight=0,
-            player_kill_weight=0,
+            key_achievement_weight=0,
             survival_mode_criteria=35,
             get_resource_criteria=75,
             get_resource_weight=0,
@@ -105,7 +105,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.local_area_dist = local_area_dist
         self.concentrate_fire_weight = concentrate_fire_weight
         self.superior_fire_weight = superior_fire_weight
-        self.player_kill_weight = player_kill_weight
+        self.key_achievement_weight = key_achievement_weight
 
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
@@ -222,19 +222,26 @@ class Postprocessor(MiniGamePostprocessor):
                 # Concentrate fire bonus
                 reward += self.concentrate_fire_weight * self._concentrate_fire
                 # Fire during superiority -- try to make agents aggressive when having number advantage
-                if (self._vof_superiority > 0 or self._local_superiority > 0) and self._concentrate_fire > 0:
+                if (self._local_superiority > 0 and self._concentrate_fire > 0) \
+                   or (self._vof_superiority > 0 and self._got_hit > 0):  # charge to the enemy when superior
                     reward += self.superior_fire_weight
                 # Team bonus for higher fire utilization, when superior
                 if self._vof_superiority > 0 and self._team_fire_utilization > 0:
                     reward += self.superior_fire_weight*self._team_fire_utilization
                 # Score kill
-                reward += self.player_kill_weight * self._player_kill
+                reward += self.key_achievement_weight * self._player_kill
 
             if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
                 reward += self._eat_progress_bonus()
 
                 if agent.resources.health_restore > 5:  # health restored when water, food >= 50
                     reward += self.heal_bonus_weight
+
+            if self.env.realm.map.seize_targets:
+                for tile, hist in self.env.realm.map.seize_status.items():
+                    # check if the agent have just seized the target
+                    if hist[0] == self.agent_id and hist[1] == self.env.realm.tick:
+                        reward += self.key_achievement_weight
 
             if self._my_task.reward_to == "agent":
                 if len(self._prev_moves) > 5:
@@ -342,11 +349,17 @@ class Postprocessor(MiniGamePostprocessor):
         if len(my_team) > 1 and sum(team_fire) >= max(2,int(len(my_team)**.5)):
             self._team_fire_utilization = float(sum(team_fire)) / len(my_team)
 
+        # Being hit
+        got_hit = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
+                  (tick_log[:,attr_to_col["target_ent"]] == self.agent_id)
+        self._got_hit = sum(got_hit)
+
         # Player kill, from the agent's log
         my_kill = (tick_log[:,attr_to_col["event"]] == EventCode.PLAYER_KILL) & \
                   (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
                   ~np.in1d(tick_log[:,attr_to_col["target_ent"]], my_team)
         self._player_kill = float(sum(my_kill) > 0)
+
 
     def _update_resource_reward_vars(self, agent, tick_log, attr_to_col):
         if not self.env.config.RESOURCE_SYSTEM_ENABLED:

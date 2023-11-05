@@ -58,7 +58,7 @@ class Config:
     local_area_dist = 5
     concentrate_fire_weight = 0.01
     superior_fire_weight = 0.1
-    player_kill_weight = 0.2
+    key_achievement_weight = 0.2
 
     survival_mode_criteria = 35  # of the health, food, water levels
     get_resource_criteria = 75

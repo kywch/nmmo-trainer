@@ -76,8 +76,6 @@ class MiniTeamBattle(ga.TeamBattle):
                                              [sampled_spec] * len(self.config.TEAMS))
 
 class RacetoCenter(mg.RacetoCenter):
-    num_game_won = 2  # wins to make the game harder
-
     def __init__(self, env, sampling_weight=None):
         super().__init__(env, sampling_weight)
         self._map_size = 24  # start from a smaller map
@@ -102,7 +100,7 @@ class UnfairFight(mg.UnfairFight):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        fight_task = [spec for spec in curriculum if "team_battle" in spec.tags and "all_foes" in spec.tags]
+        fight_task = [spec for spec in curriculum if "unfair_fight" in spec.tags]
         assert len(fight_task) == 1, "There should be one and only task with the tags"
         return task_spec.make_task_from_spec(self.teams, fight_task*2)
 
@@ -111,13 +109,13 @@ class TwoTeamHeadhunt(UnfairFight):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        fight_task = [spec for spec in curriculum if spec.eval_fn.__name__ == "HeadHunting"]
+        fight_task = [spec for spec in curriculum if "head_hunt" in spec.tags]
         np_random.shuffle(fight_task)  # shuffle left and right
         #assert len(fight_task) == 1, "There should be one and only task with the tags"
         return task_spec.make_task_from_spec(self.teams, [fight_task[0]]*2)
 
 class KingoftheHill(mg.KingoftheHill):
-    num_game_won = 2  # wins to make the game harder
+    num_game_won = 3  # wins to increase seize duration
 
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
@@ -133,6 +131,8 @@ class KingoftheHill(mg.KingoftheHill):
         return task_spec.make_task_from_spec(self.teams, team_task)
 
 class EasyKingoftheHill(KingoftheHill):
+    num_game_won = 1  # wins to increase seize duration
+
     def _set_config(self):
         super()._set_config()
         # make the game easier by decreasing the resource demands/penalty

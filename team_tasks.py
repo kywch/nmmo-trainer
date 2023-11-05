@@ -18,12 +18,6 @@ for ticks in TICK_GOAL:
       TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": ticks})
   )
 
-curriculum.append(
-    TaskSpec(eval_fn=TickGE, eval_fn_kwargs={"num_tick": 160},
-             reward_to="team",
-             tags=["unfair_def"])
-)
-
 def ProtectAgent(gs, subject, target_protect, num_tick):  # for num_ticks
     return TickGE(gs, subject, num_tick) *\
            CheckAgentStatus(gs, subject, target_protect, status="alive")
@@ -64,7 +58,7 @@ for target in ["left_team_leader", "right_team_leader"]:
                                  "target_protect": "my_team_leader"},
                  sampling_weight=10,
                  reward_to="team",
-                 tags=["team_battle"]))
+                 tags=["team_battle", "head_hunt"]))
 
 for target in ["left_team", "right_team"]:
     curriculum.append(
@@ -110,6 +104,11 @@ curriculum.append(
              reward_to="team",
              tags=["king_hill"]))
 
+curriculum.append(
+    TaskSpec(eval_fn=mg.DestoryAllTargets,
+             eval_fn_kwargs={"target": "all_foes"},
+             reward_to="team",
+             tags=["team_battle", "unfair_fight"]))
 
 if __name__ == "__main__":
     # Import the custom curriculum
