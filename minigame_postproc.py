@@ -135,10 +135,9 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/num_win_alive"] = num_win_alive
                 large_won = 1 not in self.env.game.winners
                 info["stats"][game_name+"/large_won"] = large_won
-                if large_won:
-                    info["stats"][game_name+"/large_win_score"] = self.env.game.winning_score
+                info["stats"][game_name+"/time_limit"] = self.env.game.time_limit
             if isinstance(self.env.game, tg.KingoftheHill):
-                  info["stats"][game_name+"/seize_duration"] = self.env.game.seize_duration
+                info["stats"][game_name+"/seize_duration"] = self.env.game.seize_duration
 
         return reward, done, info
 
