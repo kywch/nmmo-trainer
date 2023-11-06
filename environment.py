@@ -222,8 +222,10 @@ class Postprocessor(MiniGamePostprocessor):
                 # Concentrate fire bonus
                 reward += self.concentrate_fire_weight * self._concentrate_fire
                 # Fire during superiority -- try to make agents aggressive when having number advantage
-                if (self._local_superiority > 0 and self._concentrate_fire > 0) \
-                   or (self._vof_superiority > 0 and self._got_hit > 0):  # charge to the enemy when superior
+                if self._local_superiority > 0 and self._concentrate_fire > 0:
+                    reward += self.superior_fire_weight
+                # Charge to the enemy when superior
+                if self._vof_superiority > 0 and (self._got_hit > 0 or self._concentrate_fire > 0):
                     reward += self.superior_fire_weight
                 # Team bonus for higher fire utilization, when superior
                 if self._vof_superiority > 0 and self._team_fire_utilization > 0:
