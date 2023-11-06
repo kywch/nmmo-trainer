@@ -54,7 +54,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
                                 (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
-                                (tg.UnfairFight, 1), (tg.TwoTeamHeadhunt, 1),])
+                                (tg.UnfairFight, 1), (tg.TwoTeamHeadhunt, 1), (tg.MoreUnfairFight, 1),])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -222,14 +222,14 @@ class Postprocessor(MiniGamePostprocessor):
                 # Concentrate fire bonus
                 reward += self.concentrate_fire_weight * self._concentrate_fire
                 # Fire during superiority -- try to make agents aggressive when having number advantage
-                if self._local_superiority > 0 and self._concentrate_fire > 0:
-                    reward += self.superior_fire_weight
-                # Charge to the enemy when superior
-                if self._vof_superiority > 0 and (self._got_hit > 0 or self._concentrate_fire > 0):
+                if (self._local_superiority > 0 or self._vof_superiority > 0) and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
                 # Team bonus for higher fire utilization, when superior
                 if self._vof_superiority > 0 and self._team_fire_utilization > 0:
                     reward += self.superior_fire_weight*self._team_fire_utilization
+                # Charge toward the enemy firing range when superior
+                if self._local_superiority > 0 and self._vof_superiority > 0 and self._got_hit > 0:
+                    reward += self.key_achievement_weight
                 # Score kill
                 reward += self.key_achievement_weight * self._player_kill
 

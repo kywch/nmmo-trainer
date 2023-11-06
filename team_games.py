@@ -114,6 +114,12 @@ class TwoTeamHeadhunt(UnfairFight):
         #assert len(fight_task) == 1, "There should be one and only task with the tags"
         return task_spec.make_task_from_spec(self.teams, [fight_task[0]]*2)
 
+class MoreUnfairFight(UnfairFight):
+    def __init__(self, env, sampling_weight=None):
+        super().__init__(env, sampling_weight)
+        self._team_split = (self.config.PLAYER_N)//3
+        self.safe_zone = 4  # 9 x 9 square
+
 class KingoftheHill(mg.KingoftheHill):
     num_game_won = 3  # wins to increase seize duration
 
