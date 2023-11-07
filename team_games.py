@@ -2,6 +2,7 @@ import dill
 from nmmo.task import task_spec
 import nmmo.core.game_api as ga
 import nmmo.minigames as mg
+from nmmo.lib import team_helper
 
 
 def combat_training_config(config, required_systems = ["TERRAIN", "COMBAT"]):
@@ -96,6 +97,10 @@ class UnfairFight(mg.UnfairFight):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
+    def _set_config(self):
+        super()._set_config()
+        self.config.set_for_episode("HORIZON", 250)  # make it shorter
+
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
@@ -134,9 +139,9 @@ class KingoftheHill(mg.KingoftheHill):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        team_task = [spec for spec in curriculum if "king_hill" in spec.tags]
+        team_task = [spec for spec in curriculum if "king_hill" in spec.tags and "center" in spec.tags]
         assert len(team_task) == 1, "There should be only one task with the tag"
-        team_task[0].eval_fn_kwargs={"num_ticks": self.seize_duration}
+        team_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
         team_task *= len(self.teams)
         return task_spec.make_task_from_spec(self.teams, team_task)
 
@@ -150,3 +155,32 @@ class EasyKingoftheHill(KingoftheHill):
         self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)  # 100%
         self.config.set_for_episode("RESOURCE_DAMAGE_REDUCTION", 0.2)  # reduce to 20%
         self.config.set_for_episode("RESOURCE_HEALTH_RESTORE_FRACTION", .02)
+
+class EasyKingoftheQuad(EasyKingoftheHill):
+    _next_seize_target = None
+    quadrants = ["first", "second", "third", "fourth"]
+
+    def set_seize_target(self, target):
+        assert target in self.quadrants, "Invalid target"
+        self._next_seize_target = target
+
+    def _set_realm(self, np_random, map_dict):
+        if self._next_seize_target is None:
+            self._next_seize_target = np_random.choice(self.quadrants)
+        self.realm.reset(np_random, map_dict, custom_spawn=True,
+                         seize_targets=[self._next_seize_target])
+        # team spawn requires custom spawning
+        team_loader = team_helper.TeamLoader(self.config, np_random)
+        self.realm.players.spawn(team_loader)
+
+    def _define_tasks(self, np_random):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        team_task = [spec for spec in curriculum
+                     if "king_hill" in spec.tags and self._next_seize_target in spec.tags]
+        self._next_seize_target = None
+        assert len(team_task) == 1, "There should be only one task with the tag"
+        team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
+        team_task *= len(self.teams)
+        return task_spec.make_task_from_spec(self.teams, team_task)
