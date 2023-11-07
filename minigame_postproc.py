@@ -132,7 +132,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/avg_max_prog"] = sum(max_progress)/len(max_progress)
 
             if isinstance(self.env.game, tg.UnfairFight):
-                info["stats"][game_name+"/time_limit"] = self.env.game.time_limit
+                info["stats"][game_name+"/small_team_size"] = self.env.game.small_team_size
                 if self.env.game.winners:
                     large_won = 1 not in self.env.game.winners
                     info["stats"][game_name+"/large_won"] = large_won

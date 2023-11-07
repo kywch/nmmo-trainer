@@ -100,25 +100,29 @@ class UnfairFight(mg.UnfairFight):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        fight_task = [spec for spec in curriculum if "unfair_fight" in spec.tags]
-        assert len(fight_task) == 1, "There should be one and only task with the tags"
-        return task_spec.make_task_from_spec(self.teams, fight_task*2)
 
-class TwoTeamHeadhunt(UnfairFight):
+        # This task is to take the both spawn positions
+        seize_task = [spec for spec in curriculum
+                      if "unfair_fight" in spec.tags and tuple(self._spawn_keys.values()) in spec.tags]
+        assert len(seize_task) == 1 , "There should be one and only task with the tags"
+        seize_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
+        return task_spec.make_task_from_spec(self.teams, seize_task*2)
+
+class UnfairFightSingleSeize(UnfairFight):
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        fight_task = [spec for spec in curriculum if "head_hunt" in spec.tags]
-        np_random.shuffle(fight_task)  # shuffle left and right
-        #assert len(fight_task) == 1, "There should be one and only task with the tags"
-        return task_spec.make_task_from_spec(self.teams, [fight_task[0]]*2)
 
-class MoreUnfairFight(UnfairFight):
-    def __init__(self, env, sampling_weight=None):
-        super().__init__(env, sampling_weight)
-        self._team_split = (self.config.PLAYER_N)//3
-        self.safe_zone = 4  # 9 x 9 square
+        # This task is to take ONLY the opponent's spawn positions
+        small_task = [spec for spec in curriculum
+                      if "unfair_fight" in spec.tags and self._spawn_keys["large"] in spec.tags]
+        large_task = [spec for spec in curriculum
+                      if "unfair_fight" in spec.tags and self._spawn_keys["small"] in spec.tags]
+        assert len(small_task) == 1 and len(large_task) == 1, "There should be one and only task with the tags"
+        small_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
+        large_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
+        return task_spec.make_task_from_spec(self.teams, small_task + large_task)
 
 class KingoftheHill(mg.KingoftheHill):
     num_game_won = 3  # wins to increase seize duration

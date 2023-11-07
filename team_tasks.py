@@ -94,21 +94,36 @@ curriculum.append(
 
 for seize_dur in range(10, 91, 10):
     curriculum.append(
-        TaskSpec(eval_fn=mg.SeizeCenter,
+        TaskSpec(eval_fn=SeizeCenter,
                  eval_fn_kwargs={"num_ticks": seize_dur},
                  reward_to="team"))
 
+    for quad in ["first", "second", "third", "fourth"]:
+        curriculum.append(
+            TaskSpec(eval_fn=SeizeQuadCenter,
+                     eval_fn_kwargs={"num_ticks": seize_dur, "quadrant": quad},
+                     reward_to="team"))
+
+for quad1 in ["first", "second", "third", "fourth"]:
+    curriculum.append(
+        TaskSpec(eval_fn=SeizeQuadCenter,
+                  eval_fn_kwargs={"num_ticks": 100, "quadrant": quad1},
+                  reward_to="team",
+                  tags=["unfair_fight", quad1]))
+
+    for quad2 in ["first", "second", "third", "fourth"]:
+        if quad1 != quad2:
+            curriculum.append(
+                TaskSpec(eval_fn=mg.SeizeBothQuads,
+                         eval_fn_kwargs={"num_ticks": 100, "quadrants": [quad1, quad2]},
+                         reward_to="team",
+                         tags=["unfair_fight", (quad1, quad2)]))
+
 curriculum.append(
-    TaskSpec(eval_fn=mg.SeizeCenter,
+    TaskSpec(eval_fn=SeizeCenter,
              eval_fn_kwargs={"num_ticks": 100},
              reward_to="team",
              tags=["king_hill"]))
-
-curriculum.append(
-    TaskSpec(eval_fn=mg.DestoryAllTargets,
-             eval_fn_kwargs={"target": "all_foes"},
-             reward_to="team",
-             tags=["team_battle", "unfair_fight"]))
 
 if __name__ == "__main__":
     # Import the custom curriculum
