@@ -54,7 +54,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
                                 (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
-                                (tg.EasyKingoftheQuad, 1), (tg.UnfairFightSingleSeize, 1),])
+                                (tg.EasyKingoftheQuad, 1),])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -259,6 +259,9 @@ class Postprocessor(MiniGamePostprocessor):
                     reward += self.superior_fire_weight*self._team_fire_utilization
                 # Score kill
                 reward += self.key_achievement_weight * self._player_kill
+                # Penalize dying futilely
+                if done and (self._local_superiority < 0 or self._vof_superiority < 0):
+                    reward = -1
 
             if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
                 reward += self._eat_progress_bonus()
@@ -270,7 +273,7 @@ class Postprocessor(MiniGamePostprocessor):
                 for tile, hist in self.env.realm.map.seize_status.items():
                     # check if the agent have just seized the target
                     if hist[0] == self.agent_id and hist[1] == self.env.realm.tick:
-                        reward += self.key_achievement_weight
+                        reward += self.key_achievement_weight if not done else 0
 
             if self._my_task.reward_to == "agent":
                 if len(self._prev_moves) > 5:
