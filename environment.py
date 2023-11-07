@@ -10,7 +10,7 @@ import pufferlib.emulation
 
 import nmmo
 import nmmo.core.config as cfg
-from nmmo.lib import material
+from nmmo.lib import material, utils
 from nmmo.lib.event_log import EventCode
 from nmmo.entity.entity import EntityState
 
@@ -115,8 +115,10 @@ class Postprocessor(MiniGamePostprocessor):
 
         self._reset_reward_vars()
 
-        # placeholder for the entity maps
+        # placeholder for the maps
         self._entity_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
+        self._rally_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
+        self._rally_target = None
 
         # dist map should not change from episode to episode
         self._dist_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
@@ -128,8 +130,12 @@ class Postprocessor(MiniGamePostprocessor):
     def reset(self, observation):
         super().reset(observation)
         self._reset_reward_vars()
-        # get target_protect, target_destroy from the task, for ProtectAgent and HeadHunting
+
+        # Set the task-related vars
+        self._rally_target = None
+        self._rally_map[:] = 0
         if self._my_task is not None:
+            # get target_protect, target_destroy from the task, for ProtectAgent and HeadHunting
             if "target_protect" in self._my_task.kwargs:
                 target = self._my_task.kwargs["target_protect"]
                 self._target_protect = [target] if isinstance(target, int) else target
@@ -137,13 +143,22 @@ class Postprocessor(MiniGamePostprocessor):
                 if key in self._my_task.kwargs:
                     target = self._my_task.kwargs[key]
                     self.target_destroy = [target] if isinstance(target, int) else target
+            if "SeizeCenter" in self._my_task.name or "ProgressTowardCenter" in self._my_task.name:
+                self._rally_target = self.env.realm.map.center_coord
+                self._rally_map = np.copy(self._dist_map)
+            if "SeizeQuadCenter" in self._my_task.name:
+                target = self._my_task.kwargs["quadrant"]
+                self._rally_target = self.env.realm.map.quad_centers[target]
+                for r in range(self.config.MAP_SIZE):
+                    for c in range(self.config.MAP_SIZE):
+                        self._rally_map[r,c] = utils.linf_single((r,c), self._rally_target)
 
     @property
     def observation_space(self):
         """If you modify the shape of features, you need to specify the new obs space"""
         obs_space = super().observation_space
-        # Add informative tile maps: dist, obstacle, food, water, entity
-        add_dim = 5
+        # Add informative tile maps: dist, obstacle, food, water, entity, rally dist & point
+        add_dim = 7
         tile_dim = obs_space["Tile"].shape[1] + add_dim
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
@@ -182,7 +197,16 @@ class Postprocessor(MiniGamePostprocessor):
         obstacle = np.isin(obs["Tile"][:,2], [material.Stone.index, material.Void.index])
         food = obs["Tile"][:,2] == material.Foilage.index
         water = obs["Tile"][:,2] == material.Water.index
-        maps = [obs["Tile"], dist[:,None], obstacle[:,None], food[:,None], water[:,None], entity[:,None]]
+
+        # Rally point-related obs
+        rally_dist = self._rally_map[obs["Tile"][:,0], obs["Tile"][:,1]]  # all zero if no rally point
+        if self._rally_target:
+            rally_point = self._rally_map[obs["Tile"][:,0], obs["Tile"][:,1]] == 0
+        else:
+            rally_point = np.zeros_like(rally_dist)
+
+        maps = [obs["Tile"], dist[:,None], obstacle[:,None], food[:,None], water[:,None],
+                entity[:,None], rally_dist[:,None], rally_point[:,None]]
         return np.concatenate(maps, axis=1).astype(np.int16)
 
     def _process_attack_mask(self, obs):
@@ -206,11 +230,17 @@ class Postprocessor(MiniGamePostprocessor):
         """Called on reward, done, and info before they are returned from the environment"""
         reward, done, info = super().reward_done_info(reward, done, info)  # DO NOT REMOVE
 
-        # Default reward shaper sums team rewards.
+        # Default reward shaper sums team rewards from the task system.
         # Add custom reward shaping here.
-        if not done:
+        # NOTE: The case (done and reward > 0)=True comes from team games to NOT penalize sacrifice for team
+        if not done or (done and reward > 0):
             # Update the reward vars that are used to calculate the below bonuses
-            agent = self.env.realm.players[self.agent_id]
+            if self.agent_id in self.env.realm.players:
+                agent = self.env.realm.players[self.agent_id]
+            elif self.agent_id in self.env.dead_this_tick:
+                agent = self.env.dead_this_tick[self.agent_id]
+            else: # This should not happen
+                raise ValueError(f"Agent {self.agent_id} not found in the realm")
             self._update_reward_vars(agent)
 
             # Run away from death fog
@@ -358,7 +388,6 @@ class Postprocessor(MiniGamePostprocessor):
                   (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
                   ~np.in1d(tick_log[:,attr_to_col["target_ent"]], my_team)
         self._player_kill = float(sum(my_kill) > 0)
-
 
     def _update_resource_reward_vars(self, agent, tick_log, attr_to_col):
         if not self.env.config.RESOURCE_SYSTEM_ENABLED:
