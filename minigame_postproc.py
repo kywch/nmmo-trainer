@@ -124,26 +124,30 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             if self.env.game.winners:
                 info["stats"][game_name+"/winning_score"] = self.env.game.winning_score
 
-            if isinstance(self.env.game, tg.RacetoCenter) or isinstance(self.env.game, tg.KingoftheHill):
+            if isinstance(self.env.game, tg.RacetoCenter) or isinstance(self.env.game, tg.KingoftheHill) \
+               or isinstance(self.env.game, tg.Sandwich):
                 info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
                 info["stats"][game_name+"/map_size"] = self.env.game.map_size
                 max_progress = [task.progress_info["max_progress"] for task in self.env.game.tasks]
                 info["stats"][game_name+"/max_progress"] = max(max_progress)
                 info["stats"][game_name+"/avg_max_prog"] = sum(max_progress)/len(max_progress)
 
-            if isinstance(self.env.game, tg.UnfairFight):
-                info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
-                info["stats"][game_name+"/small_team_size"] = self.env.game.small_team_size
-                if self.env.game.winners:
-                    large_won = 1 not in self.env.game.winners
-                    info["stats"][game_name+"/large_won"] = large_won
-                    # get the kills by the win team
-                    kill_log = self.env.realm.event_log.get_data(agents=self.env.game.winners,
-                                                                event_code=EventCode.PLAYER_KILL)
-                    info["stats"][game_name+"/win_kill_count"] = kill_log.shape[0]
+            # if isinstance(self.env.game, tg.UnfairFight):
+            #     info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
+            #     info["stats"][game_name+"/small_team_size"] = self.env.game.small_team_size
+            #     if self.env.game.winners:
+            #         large_won = 1 not in self.env.game.winners
+            #         info["stats"][game_name+"/large_won"] = large_won
+            #         # get the kills by the win team
+            #         kill_log = self.env.realm.event_log.get_data(agents=self.env.game.winners,
+            #                                                     event_code=EventCode.PLAYER_KILL)
+            #         info["stats"][game_name+"/win_kill_count"] = kill_log.shape[0]
 
             if isinstance(self.env.game, tg.KingoftheHill):
                 info["stats"][game_name+"/seize_duration"] = self.env.game.seize_duration
+
+            if isinstance(self.env.game, tg.Sandwich):
+                info["stats"][game_name+"/inner_npc_num"] = self.env.game.inner_npc_num
 
         return reward, done, info
 

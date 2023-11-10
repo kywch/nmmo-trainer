@@ -31,7 +31,7 @@ TEAMMATE_REPR = 6
 PROTECT_TARGET_REPR = 7
 
 
-class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
+class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC):
     """Configuration for Neural MMO."""
 
     def __init__(self, args: Namespace):
@@ -54,7 +54,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat):
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
                                 (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
-                                (tg.EasyKingoftheQuad, 1),])
+                                (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), ])
 
 def make_env_creator(args: Namespace):
     def env_creator():

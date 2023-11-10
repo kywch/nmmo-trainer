@@ -184,3 +184,17 @@ class EasyKingoftheQuad(EasyKingoftheHill):
         team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
         team_task *= len(self.teams)
         return task_spec.make_task_from_spec(self.teams, team_task)
+
+class Sandwich(mg.Sandwich):
+    def is_compatible(self):
+        return check_curriculum_file(self.config) and super().is_compatible()
+
+    def _define_tasks(self, np_random):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        team_task = [spec for spec in curriculum if "king_hill" in spec.tags and "center" in spec.tags]
+        assert len(team_task) == 1, "There should be only one task with the tag"
+        team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
+        team_task *= len(self.teams)
+        return task_spec.make_task_from_spec(self.teams, team_task)
