@@ -40,7 +40,7 @@ class MiniAgentTraining(ga.AgentTraining):
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
 
-    def _set_config(self):
+    def _set_config(self, np_random):
         self.config.reset()
         self.config.toggle_systems(self.required_systems)
 
@@ -59,7 +59,7 @@ class MiniTeamTraining(ga.TeamTraining):
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
 
-    def _set_config(self):
+    def _set_config(self, np_random):
         combat_training_config(self.config)
 
 class MiniTeamBattle(ga.TeamBattle):
@@ -68,7 +68,7 @@ class MiniTeamBattle(ga.TeamBattle):
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
 
-    def _set_config(self):
+    def _set_config(self, np_random):
         combat_training_config(self.config)
 
     def _define_tasks(self, np_random):
@@ -97,8 +97,8 @@ class UnfairFight(mg.UnfairFight):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
-    def _set_config(self):
-        super()._set_config()
+    def _set_config(self, np_random):
+        super()._set_config(np_random)
         self.config.set_for_episode("HORIZON", 250)  # make it shorter
 
     def _define_tasks(self, np_random):
@@ -148,8 +148,8 @@ class KingoftheHill(mg.KingoftheHill):
 class EasyKingoftheHill(KingoftheHill):
     num_game_won = 1  # wins to increase seize duration
 
-    def _set_config(self):
-        super()._set_config()
+    def _set_config(self, np_random):
+        super()._set_config(np_random)
         # make the game easier by decreasing the resource demands/penalty
         self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 2)
         self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)  # 100%
