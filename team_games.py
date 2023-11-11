@@ -189,6 +189,11 @@ class Sandwich(mg.Sandwich):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
+    def _set_config(self, np_random):
+        # randomly select whether to use the terrain map or grass map
+        self._grass_map = np_random.choice([True, False])
+        super()._set_config(np_random)
+
     def _define_tasks(self, np_random):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
