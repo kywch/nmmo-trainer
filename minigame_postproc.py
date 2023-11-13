@@ -148,6 +148,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
 
             if isinstance(self.env.game, tg.Sandwich):
                 info["stats"][game_name+"/inner_npc_num"] = self.env.game.inner_npc_num
+                info["stats"][game_name+"/spawned_npc"] = abs(self.env.realm.npcs.next_id+1)
 
         return reward, done, info
 
