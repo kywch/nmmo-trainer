@@ -53,7 +53,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC):
         self.set("TASK_EMBED_DIM", args.task_size)
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
-                                (tg.RacetoCenter, 3), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
+                                (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
                                 (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), ])
 
 def make_env_creator(args: Namespace):
@@ -343,7 +343,9 @@ class Postprocessor(MiniGamePostprocessor):
 
         # Seize tile
         if self.env.realm.map.seize_targets:
-            self._seize_tile = sum(tick_log[:,attr_to_col["event"]] == EventCode.SEIZE_TILE)
+            my_sieze = (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
+                       (tick_log[:,attr_to_col["event"]] == EventCode.SEIZE_TILE)
+            self._seize_tile = sum(my_sieze)
 
         # System-dependent reward vars
         self._update_combat_reward_vars(agent, tick_log, attr_to_col)
