@@ -53,7 +53,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC):
         self.set("TASK_EMBED_DIM", args.task_size)
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
-                                (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
+                                (tg.RacetoCenter, 3), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
                                 (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), ])
 
 def make_env_creator(args: Namespace):
