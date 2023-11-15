@@ -19,9 +19,9 @@ def combat_training_config(config, required_systems = ["TERRAIN", "COMBAT"]):
     config.set_for_episode("TERRAIN_FOILAGE", 0.95)  # prop of stone tiles: 0.05
 
     # Activate death fog
-    config.set_for_episode("PLAYER_DEATH_FOG", 128)
-    config.set_for_episode("PLAYER_DEATH_FOG_SPEED", 1/8)
-    config.set_for_episode("PLAYER_DEATH_FOG_FINAL_SIZE", 3)
+    config.set_for_episode("DEATH_FOG_ONSET", 128)
+    config.set_for_episode("DEATH_FOG_SPEED", 1/8)
+    config.set_for_episode("DEATH_FOG_FINAL_SIZE", 3)
 
     # Small health regen every tick
     config.set_for_episode("PLAYER_HEALTH_INCREMENT", True)
@@ -48,10 +48,10 @@ class MiniAgentTraining(ga.AgentTraining):
         self.config.set_for_episode("TERRAIN_SCATTER_EXTRA_RESOURCES", True)
 
         # fog setting for the race to center
-        self.config.set_for_episode("PLAYER_DEATH_FOG", 32)
-        self.config.set_for_episode("PLAYER_DEATH_FOG_SPEED", 1/4)
+        self.config.set_for_episode("DEATH_FOG_ONSET", 32)
+        self.config.set_for_episode("DEATH_FOG_SPEED", 1/4)
         # Only the center tile is safe
-        self.config.set_for_episode("PLAYER_DEATH_FOG_FINAL_SIZE", 0)
+        self.config.set_for_episode("DEATH_FOG_FINAL_SIZE", 0)
 
 class MiniTeamTraining(ga.TeamTraining):
     required_systems = ["TERRAIN", "COMBAT"]
