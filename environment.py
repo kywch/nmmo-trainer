@@ -257,8 +257,8 @@ class Postprocessor(MiniGamePostprocessor):
                 # Team bonus for higher fire utilization, when superior
                 if self._vof_superiority > 0 and self._team_fire_utilization > 0:
                     reward += self.superior_fire_weight*self._team_fire_utilization
-                # Score kill
-                reward += self.key_achievement_weight * self._player_kill
+                # Score kill -- just using superior fire weight bonus
+                reward += self.superior_fire_weight * self._player_kill
                 # Penalize dying futilely
                 if done and (self._local_superiority < 0 or self._vof_superiority < 0):
                     reward = -1
@@ -391,9 +391,10 @@ class Postprocessor(MiniGamePostprocessor):
                   (tick_log[:,attr_to_col["target_ent"]] == self.agent_id)
         self._got_hit = sum(got_hit)
 
-        # Player kill, from the agent's log
+        # Player kill, from the agent's log -- ONLY consider players, not npcs
         my_kill = (tick_log[:,attr_to_col["event"]] == EventCode.PLAYER_KILL) & \
                   (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
+                  (tick_log[:,attr_to_col["target_ent"]] > 0) & \
                   ~np.in1d(tick_log[:,attr_to_col["target_ent"]], my_team)
         self._player_kill = float(sum(my_kill) > 0)
 
