@@ -271,7 +271,7 @@ class Postprocessor(MiniGamePostprocessor):
 
             if self.env.realm.map.seize_targets and self._seize_tile > 0:
                 # _seize_tile > 0 if the agent have just seized the target
-                reward += self.key_achievement_weight if not done else 0
+                reward += self.key_achievement_weight
 
             if self._my_task.reward_to == "agent":
                 if len(self._prev_moves) > 5:
