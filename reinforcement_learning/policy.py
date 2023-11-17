@@ -26,8 +26,8 @@ class Baseline(pufferlib.models.Policy):
     self.player_encoder = PlayerEncoder(input_size, hidden_size)
     task_size = env.structured_observation_space["Task"].shape[0]
     self.task_encoder = TaskEncoder(input_size, hidden_size, task_size)
-    comm_attr_dim = env.structured_observation_space["Z_CommMap"].shape[0]
-    self.comm_encoder = CommEncoder(input_size, comm_attr_dim)
+    comm_attr_dim = env.structured_observation_space["Communication"].shape[1]
+    self.comm_encoder = CommEncoder(input_size, hidden_size, comm_attr_dim)
 
     self.proj_fc = torch.nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
@@ -41,7 +41,7 @@ class Baseline(pufferlib.models.Policy):
         env_outputs["Entity"], env_outputs["AgentId"][:, 0]
     )
     task = self.task_encoder(env_outputs["Task"])
-    comm = self.comm_encoder(env_outputs["Z_CommMap"])
+    comm = self.comm_encoder(env_outputs["Communication"])
     obs = torch.cat([tile, my_agent, task, comm], dim=-1)
     obs = self.proj_fc(obs)
 
@@ -94,19 +94,37 @@ class TileEncoder(torch.nn.Module):
     return tile
 
 
-class CommEncoder(torch.nn.Module):
-  def __init__(self, input_size, comm_attr_dim):
+class PositionalEncoding(torch.nn.Module):
+  def __init__(self, d_model, max_len=100):
     super().__init__()
-    self.conv1 = torch.nn.Conv2d(comm_attr_dim, 8, kernel_size=5, stride=4, padding=1)
-    self.conv2 = torch.nn.Conv2d(8, 16, kernel_size=5, stride=4, padding=1)
-    self.fc = torch.nn.Linear(16 * 10 * 10, input_size)
+    self.encoding = torch.zeros(max_len, d_model)
+    position = torch.arange(0, max_len).unsqueeze(1).float()
+    div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(torch.log(torch.tensor(10000.0)) / d_model))
+    self.encoding[:, 0::2] = torch.sin(position * div_term)
+    self.encoding[:, 1::2] = torch.cos(position * div_term)
+    self.encoding = self.encoding.unsqueeze(0)
 
-  def forward(self, comm_map):
-    comm_map = F.relu(self.conv1(comm_map))  # (64, 2, 160, 160) -> (64, 8, 40, 40)
-    comm_map = F.relu(self.conv2(comm_map))  # (64, 8, 40, 40) -> (64, 16, 10, 10)
-    comm_map = comm_map.view(comm_map.shape[0], -1)  # agents = comm_map.shape[0]
-    comm_map = F.relu(self.fc(comm_map))  # (64, 1600) -> (64, 256)
-    return comm_map
+  def forward(self, x):
+      return x + self.encoding[:, :x.size(1)].detach().to(x.device)
+
+class CommEncoder(torch.nn.Module):
+    def __init__(self, input_size, hidden_size, comm_dim):
+        super().__init__()
+        self.embedding_layer = torch.nn.Sequential(
+            torch.nn.Linear(comm_dim, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, hidden_size)
+        )
+        self.positional_encoding = PositionalEncoding(hidden_size)
+        self.output_layer = torch.nn.Linear(hidden_size, input_size)
+
+    def forward(self, x):
+        embedded = self.embedding_layer(x)
+        embedded_with_position = self.positional_encoding(embedded)
+        output_vector = self.output_layer(embedded_with_position.sum(dim=1))
+        return output_vector
 
 
 class PlayerEncoder(torch.nn.Module):

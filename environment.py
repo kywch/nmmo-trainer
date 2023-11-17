@@ -163,9 +163,6 @@ class Postprocessor(MiniGamePostprocessor):
         tile_dim = obs_space["Tile"].shape[1] + add_dim
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
-        # Add comm map
-        obs_space["Z_CommMap"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
-                                                shape=(2, self.config.MAP_SIZE, self.config.MAP_SIZE))
         return obs_space
 
     def observation(self, obs):
@@ -177,7 +174,6 @@ class Postprocessor(MiniGamePostprocessor):
         # Parse and augment tile obs
         self._update_entity_map(obs)
         obs["Tile"] = self._augment_tile_obs(obs)
-        obs["Z_CommMap"] = self._comm_map
 
         # Do NOT attack teammates
         obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
@@ -202,11 +198,11 @@ class Postprocessor(MiniGamePostprocessor):
                     self._entity_map[ent_pos] = max(PROTECT_TARGET_REPR, self._entity_map[ent_pos])
 
         # Also process the Comm obs to map the teammates outside the visual range
-        self._comm_map[:] = 0
-        for comm in obs["Communication"]:
-            r, c = comm[CommAttr["row"]], comm[CommAttr["col"]]
-            self._comm_map[0,r,c] = comm[CommAttr["message"]]  # max should be 255
-        self._comm_map[1,obs["Tile"][:,0],obs["Tile"][:,1]] = 1  # mark the visible tiles
+        # self._comm_map[:] = 0
+        # for comm in obs["Communication"]:
+        #     r, c = comm[CommAttr["row"]], comm[CommAttr["col"]]
+        #     self._comm_map[0,r,c] = comm[CommAttr["message"]]  # max should be 255
+        # self._comm_map[1,obs["Tile"][:,0],obs["Tile"][:,1]] = 1  # mark the visible tiles
 
     def _augment_tile_obs(self, obs):
         # assume updated entity map
