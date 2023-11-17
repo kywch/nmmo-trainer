@@ -26,8 +26,10 @@ class Baseline(pufferlib.models.Policy):
     self.player_encoder = PlayerEncoder(input_size, hidden_size)
     task_size = env.structured_observation_space["Task"].shape[0]
     self.task_encoder = TaskEncoder(input_size, hidden_size, task_size)
-    comm_attr_dim = env.structured_observation_space["Communication"].shape[1]
-    self.comm_encoder = CommEncoder(input_size, hidden_size, comm_attr_dim)
+
+    map_size, token_num = self.config.MAP_SIZE, self.config.COMMUNICATION_NUM_TOKENS
+    comm_obs_n = env.structured_observation_space["Communication"].shape[0]
+    self.comm_encoder = CommEncoder(input_size, map_size, token_num, comm_obs_n)
 
     self.proj_fc = torch.nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
@@ -41,7 +43,7 @@ class Baseline(pufferlib.models.Policy):
         env_outputs["Entity"], env_outputs["AgentId"][:, 0]
     )
     task = self.task_encoder(env_outputs["Task"])
-    comm = self.comm_encoder(env_outputs["Communication"])
+    comm = self.comm_encoder(env_outputs["Communication"], env_outputs["AgentId"][:, 0])
     obs = torch.cat([tile, my_agent, task, comm], dim=-1)
     obs = self.proj_fc(obs)
 
@@ -94,37 +96,41 @@ class TileEncoder(torch.nn.Module):
     return tile
 
 
-class PositionalEncoding(torch.nn.Module):
-  def __init__(self, d_model, max_len=100):
-    super().__init__()
-    self.encoding = torch.zeros(max_len, d_model)
-    position = torch.arange(0, max_len).unsqueeze(1).float()
-    div_term = torch.exp(torch.arange(0, d_model, 2).float() * -(torch.log(torch.tensor(10000.0)) / d_model))
-    self.encoding[:, 0::2] = torch.sin(position * div_term)
-    self.encoding[:, 1::2] = torch.cos(position * div_term)
-    self.encoding = self.encoding.unsqueeze(0)
-
-  def forward(self, x):
-      return x + self.encoding[:, :x.size(1)].detach().to(x.device)
-
 class CommEncoder(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, comm_dim):
-        super().__init__()
-        self.embedding_layer = torch.nn.Sequential(
-            torch.nn.Linear(comm_dim, hidden_size),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_size, hidden_size),
-            torch.nn.ReLU(),
-            torch.nn.Linear(hidden_size, hidden_size)
-        )
-        self.positional_encoding = PositionalEncoding(hidden_size)
-        self.output_layer = torch.nn.Linear(hidden_size, input_size)
+  def __init__(self, input_size, map_size, token_num, comm_obs_n,
+               embed_dim=32):
+    super().__init__()
+    self.map_size = map_size
+    self.token_num = token_num
+    self.pos_embedding = torch.nn.Embedding(map_size*map_size, embed_dim)
+    self.comm_embedding = torch.nn.Embedding(map_size*map_size*token_num, embed_dim)
+    self.comm_fc = torch.nn.Linear(embed_dim*(2*comm_obs_n+1), input_size)
 
-    def forward(self, x):
-        embedded = self.embedding_layer(x)
-        embedded_with_position = self.positional_encoding(embedded)
-        output_vector = self.output_layer(embedded_with_position.sum(dim=1))
-        return output_vector
+  def forward(self, comm_obs, my_id):
+    # Input shape: (batch_size, 100, 4)
+    agent_ids = comm_obs[:, :, 0].int()
+    row_indices = comm_obs[:, :, 1].int()
+    col_indices = comm_obs[:, :, 2].int()
+    tokens = comm_obs[:, :, 3].int()
+
+    pos_idx = row_indices * self.map_size + col_indices
+    pos_embeddings = self.pos_embedding(pos_idx)
+
+    token_idx = pos_idx * self.token_num + tokens
+    token_embeddings = self.comm_embedding(token_idx)
+
+    # Pull out rows corresponding to the agent
+    mask = (agent_ids == my_id.unsqueeze(1)) & (agent_ids != 0)
+    mask = mask.int()
+    row_indices = torch.where(
+        mask.any(dim=1), mask.argmax(dim=1), torch.zeros_like(mask.sum(dim=1)))
+    my_pos_embeddings = pos_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
+    my_token_embeddings = token_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
+
+    embeddings = torch.cat((pos_embeddings, token_embeddings), dim=2)
+    embeddings = embeddings.view(embeddings.size(0), -1)
+    embeddings = torch.cat([my_pos_embeddings, embeddings], dim=1)
+    return self.comm_fc(embeddings)
 
 
 class PlayerEncoder(torch.nn.Module):
