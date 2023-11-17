@@ -191,6 +191,6 @@ class CommTogether(mg.CommTogether):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
-        team_task = [spec for spec in curriculum if "sync_seek" in spec.tags]
+        team_task = [spec for spec in curriculum if "comm_together" in spec.tags]
         assert len(team_task) == 1, "There should be only one task with the tag"
         return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))

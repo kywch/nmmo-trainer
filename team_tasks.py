@@ -134,9 +134,9 @@ for dist in range(4, 11, 2):
 
 curriculum.append(
     TaskSpec(eval_fn=AllMembersWithinRange,
-             eval_fn_kwargs={"dist": 5},
+             eval_fn_kwargs={"dist": 4},
              reward_to="team",
-             tags=["sync_seek"]))
+             tags=["comm_together"]))
 
 if __name__ == "__main__":
     # Import the custom curriculum
