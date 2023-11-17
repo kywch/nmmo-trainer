@@ -19,13 +19,15 @@ class Baseline(pufferlib.models.Policy):
     self.flat_observation_structure = env.flat_observation_structure
 
     # obs["Tile"] has death fog and obstacle info
-    proj_fc_multiplier = 3  # tile (cnn), my_agent, task
+    proj_fc_multiplier = 4  # tile (cnn), my_agent, task, comm
     tile_attr_dim = env.structured_observation_space["Tile"].shape[1]
     self.tile_encoder = TileEncoder(input_size, tile_attr_dim)
 
     self.player_encoder = PlayerEncoder(input_size, hidden_size)
     task_size = env.structured_observation_space["Task"].shape[0]
     self.task_encoder = TaskEncoder(input_size, hidden_size, task_size)
+    comm_attr_dim = env.structured_observation_space["Z_CommMap"].shape[0]
+    self.comm_encoder = CommEncoder(input_size, comm_attr_dim)
 
     self.proj_fc = torch.nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
@@ -39,7 +41,8 @@ class Baseline(pufferlib.models.Policy):
         env_outputs["Entity"], env_outputs["AgentId"][:, 0]
     )
     task = self.task_encoder(env_outputs["Task"])
-    obs = torch.cat([tile, my_agent, task], dim=-1)
+    comm = self.comm_encoder(env_outputs["Z_CommMap"])
+    obs = torch.cat([tile, my_agent, task, comm], dim=-1)
     obs = self.proj_fc(obs)
 
     return obs, (
@@ -89,6 +92,21 @@ class TileEncoder(torch.nn.Module):
     tile = F.relu(self.tile_fc(tile))
 
     return tile
+
+
+class CommEncoder(torch.nn.Module):
+  def __init__(self, input_size, comm_attr_dim):
+    super().__init__()
+    self.conv1 = torch.nn.Conv2d(comm_attr_dim, 8, kernel_size=5, stride=4, padding=1)
+    self.conv2 = torch.nn.Conv2d(8, 16, kernel_size=5, stride=4, padding=1)
+    self.fc = torch.nn.Linear(16 * 10 * 10, input_size)
+
+  def forward(self, comm_map):
+    comm_map = F.relu(self.conv1(comm_map))  # (64, 2, 160, 160) -> (64, 8, 40, 40)
+    comm_map = F.relu(self.conv2(comm_map))  # (64, 8, 40, 40) -> (64, 16, 10, 10)
+    comm_map = comm_map.view(comm_map.shape[0], -1)  # agents = comm_map.shape[0]
+    comm_map = F.relu(self.fc(comm_map))  # (64, 1600) -> (64, 256)
+    return comm_map
 
 
 class PlayerEncoder(torch.nn.Module):
@@ -145,6 +163,7 @@ class ActionDecoder(torch.nn.Module):
         {
             "attack_style": torch.nn.Linear(hidden_size, 3),
             "attack_target": torch.nn.Linear(hidden_size, hidden_size),
+            "comm": torch.nn.Linear(hidden_size, 19),
             "move": torch.nn.Linear(hidden_size, 5),
         }
     )
@@ -172,6 +191,7 @@ class ActionDecoder(torch.nn.Module):
     action_targets = {
         "attack_style": action_targets["Attack"]["Style"],
         "attack_target": action_targets["Attack"]["Target"],
+        "comm": action_targets["Comm"]["Token"],
         "move": action_targets["Move"]["Direction"],
     }
 

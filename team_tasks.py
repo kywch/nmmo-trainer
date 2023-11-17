@@ -126,6 +126,18 @@ curriculum.append(
              reward_to="team",
              tags=["king_hill", "center"]))
 
+for dist in range(4, 11, 2):
+    curriculum.append(
+        TaskSpec(eval_fn=AllMembersWithinRange,
+                 eval_fn_kwargs={"dist": dist},
+                 reward_to="team"))
+
+curriculum.append(
+    TaskSpec(eval_fn=AllMembersWithinRange,
+             eval_fn_kwargs={"dist": 5},
+             reward_to="team",
+             tags=["sync_seek"]))
+
 if __name__ == "__main__":
     # Import the custom curriculum
     print("------------------------------------------------------------")

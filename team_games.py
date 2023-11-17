@@ -93,42 +93,6 @@ class RacetoCenter(mg.RacetoCenter):
         race_task *= self.config.PLAYER_N
         return task_spec.make_task_from_spec(self.config.POSSIBLE_AGENTS, race_task)
 
-class UnfairFight(mg.UnfairFight):
-    def is_compatible(self):
-        return check_curriculum_file(self.config) and super().is_compatible()
-
-    def _set_config(self, np_random):
-        super()._set_config(np_random)
-        self.config.set_for_episode("HORIZON", 250)  # make it shorter
-
-    def _define_tasks(self, np_random):
-        # Changed to use the curriculum file
-        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
-          curriculum = dill.load(f) # a list of TaskSpec
-
-        # This task is to take the both spawn positions
-        seize_task = [spec for spec in curriculum
-                      if "unfair_fight" in spec.tags and tuple(self._spawn_keys.values()) in spec.tags]
-        assert len(seize_task) == 1 , "There should be one and only task with the tags"
-        seize_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
-        return task_spec.make_task_from_spec(self.teams, seize_task*2)
-
-class UnfairFightSingleSeize(UnfairFight):
-    def _define_tasks(self, np_random):
-        # Changed to use the curriculum file
-        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
-          curriculum = dill.load(f) # a list of TaskSpec
-
-        # This task is to take ONLY the opponent's spawn positions
-        small_task = [spec for spec in curriculum
-                      if "unfair_fight" in spec.tags and self._spawn_keys["large"] in spec.tags]
-        large_task = [spec for spec in curriculum
-                      if "unfair_fight" in spec.tags and self._spawn_keys["small"] in spec.tags]
-        assert len(small_task) == 1 and len(large_task) == 1, "There should be one and only task with the tags"
-        small_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
-        large_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
-        return task_spec.make_task_from_spec(self.teams, small_task + large_task)
-
 class KingoftheHill(mg.KingoftheHill):
     num_game_won = 3  # wins to increase seize duration
 
@@ -186,12 +150,17 @@ class EasyKingoftheQuad(EasyKingoftheHill):
         return task_spec.make_task_from_spec(self.teams, team_task)
 
 class Sandwich(mg.Sandwich):
+    _next_grass_map = None
+
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
+    def set_grass_map(self, grass_map):
+        self._next_grass_map = grass_map
+
     def _set_config(self, np_random):
         # randomly select whether to use the terrain map or grass map
-        self._grass_map = np_random.choice([True, False])
+        self._grass_map = self._next_grass_map or np_random.choice([True, False], p=[0.2, 0.8])
         super()._set_config(np_random)
 
     def _define_tasks(self, np_random):
@@ -203,3 +172,25 @@ class Sandwich(mg.Sandwich):
         team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
         team_task *= len(self.teams)
         return task_spec.make_task_from_spec(self.teams, team_task)
+
+class CommTogether(mg.CommTogether):
+    _next_grass_map = None
+
+    def is_compatible(self):
+        return check_curriculum_file(self.config) and super().is_compatible()
+
+    def set_grass_map(self, grass_map):
+        self._next_grass_map = grass_map
+
+    def _set_config(self, np_random):
+        # randomly select whether to use the terrain map or grass map
+        self._grass_map = self._next_grass_map or np_random.choice([True, False], p=[0.2, 0.8])
+        super()._set_config(np_random)
+
+    def _define_tasks(self, np_random):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        team_task = [spec for spec in curriculum if "sync_seek" in spec.tags]
+        assert len(team_task) == 1, "There should be only one task with the tag"
+        return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))

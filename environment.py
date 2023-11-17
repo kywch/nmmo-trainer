@@ -12,12 +12,13 @@ import nmmo
 import nmmo.core.config as cfg
 from nmmo.lib import material, utils
 from nmmo.lib.event_log import EventCode
-from nmmo.entity.entity import EntityState
+from nmmo.entity.entity import EntityState, CommAttr
 
 from minigame_postproc import MiniGamePostprocessor
 import team_games as tg
 
 EntityAttr = EntityState.State.attr_name_to_col
+CommAttr = {"id": 0, "row": 1, "col": 2, "message": 3}
 IMPASSIBLE = list(material.Impassible.indices)
 
 RESOURCE_EVENTS = [EventCode.EAT_FOOD, EventCode.DRINK_WATER]
@@ -31,7 +32,7 @@ TEAMMATE_REPR = 6
 PROTECT_TARGET_REPR = 7
 
 
-class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC):
+class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC, cfg.Communication):
     """Configuration for Neural MMO."""
 
     def __init__(self, args: Namespace):
@@ -41,7 +42,6 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC):
         self.set("PROVIDE_NOOP_ACTION_TARGET", True)
         self.set("PROVIDE_DEATH_FOG_OBS", True)
         self.set("MAP_FORCE_GENERATION", False)
-        self.set("COMMUNICATION_SYSTEM_ENABLED", False)
         self.set("HORIZON", args.max_episode_length)
         self.set("PLAYER_N", args.num_agents)
         self.set("TEAMS", {i: [i*args.num_agents_per_team+j+1 for j in range(args.num_agents_per_team)]
@@ -54,7 +54,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC):
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
                                 (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
-                                (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), ])
+                                (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), (tg.CommTogether, 1),])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -117,6 +117,7 @@ class Postprocessor(MiniGamePostprocessor):
 
         # placeholder for the maps
         self._entity_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
+        self._comm_map = np.zeros((2, self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._rally_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._rally_target = None
 
@@ -162,6 +163,9 @@ class Postprocessor(MiniGamePostprocessor):
         tile_dim = obs_space["Tile"].shape[1] + add_dim
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
+        # Add comm map
+        obs_space["Z_CommMap"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
+                                                shape=(2, self.config.MAP_SIZE, self.config.MAP_SIZE))
         return obs_space
 
     def observation(self, obs):
@@ -171,18 +175,23 @@ class Postprocessor(MiniGamePostprocessor):
         define the observation space again (i.e. Gym.spaces.Dict(gym.spaces....))
         """
         # Parse and augment tile obs
+        self._update_entity_map(obs)
         obs["Tile"] = self._augment_tile_obs(obs)
+        obs["Z_CommMap"] = self._comm_map
 
         # Do NOT attack teammates
         obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
         return obs
 
-    def _augment_tile_obs(self, obs):
+    def _update_entity_map(self, obs):
         # Process entity obs
         self._entity_map[:] = 0
-        entity_idx = obs["Entity"][:, EntityAttr["id"]] != 0
+        entity_idx = obs["Entity"][:,EntityAttr["id"]] != 0
         for entity in obs["Entity"][entity_idx]:
             ent_pos = (entity[EntityAttr["row"]], entity[EntityAttr["col"]])
+            if entity[EntityAttr["id"]] < 0:
+                npc_type = entity[EntityAttr["npc_type"]]
+                self._entity_map[ent_pos] = max(npc_type, self._entity_map[ent_pos])
             if entity[EntityAttr["id"]] > 0:
                 self._entity_map[ent_pos] = max(ENEMY_REPR, self._entity_map[ent_pos])
                 if entity[EntityAttr["id"]] in self._target_destroy:
@@ -191,17 +200,26 @@ class Postprocessor(MiniGamePostprocessor):
                     self._entity_map[ent_pos] = max(TEAMMATE_REPR, self._entity_map[ent_pos])
                 if entity[EntityAttr["id"]] in self._target_protect:
                     self._entity_map[ent_pos] = max(PROTECT_TARGET_REPR, self._entity_map[ent_pos])
-        entity = self._entity_map[obs["Tile"][:,0], obs["Tile"][:,1]]
 
-        dist = self._dist_map[obs["Tile"][:,0], obs["Tile"][:,1]]
+        # Also process the Comm obs to map the teammates outside the visual range
+        self._comm_map[:] = 0
+        for comm in obs["Communication"]:
+            r, c = comm[CommAttr["row"]], comm[CommAttr["col"]]
+            self._comm_map[0,r,c] = comm[CommAttr["message"]]  # max should be 255
+        self._comm_map[1,obs["Tile"][:,0],obs["Tile"][:,1]] = 1  # mark the visible tiles
+
+    def _augment_tile_obs(self, obs):
+        # assume updated entity map
+        entity = self._entity_map[obs["Tile"][:,0],obs["Tile"][:,1]]
+        dist = self._dist_map[obs["Tile"][:,0],obs["Tile"][:,1]]
         obstacle = np.isin(obs["Tile"][:,2], [material.Stone.index, material.Void.index])
         food = obs["Tile"][:,2] == material.Foilage.index
         water = obs["Tile"][:,2] == material.Water.index
 
         # Rally point-related obs
-        rally_dist = self._rally_map[obs["Tile"][:,0], obs["Tile"][:,1]]  # all zero if no rally point
+        rally_dist = self._rally_map[obs["Tile"][:,0],obs["Tile"][:,1]]  # all zero if no rally point
         if self._rally_target:
-            rally_point = self._rally_map[obs["Tile"][:,0], obs["Tile"][:,1]] == 0
+            rally_point = self._rally_map[obs["Tile"][:,0],obs["Tile"][:,1]] == 0
         else:
             rally_point = np.zeros_like(rally_dist)
 
