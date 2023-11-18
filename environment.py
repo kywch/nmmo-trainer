@@ -263,8 +263,8 @@ class Postprocessor(MiniGamePostprocessor):
             if self.env.config.COMBAT_SYSTEM_ENABLED:
                 # Local superiority bonus
                 reward += self.local_superiority_weight * self._local_superiority
-                # Concentrate fire bonus
-                reward += self.superior_fire_weight * self._concentrate_fire
+                # Concentrate fire bonus, i.e., reward more than one hit on the same target
+                reward += self.superior_fire_weight * (self._concentrate_fire - 1)
                 # Fire during superiority -- try to make agents aggressive when having number advantage
                 if (self._local_superiority > 0 or self._vof_superiority > 0) and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
