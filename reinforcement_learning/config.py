@@ -41,7 +41,7 @@ class Config:
     clip_coef = 0.1  # PPO clip coefficient
 
     # Environment Args
-    num_agents = 64  # Number of agents to use for training
+    num_agents = 72  # Number of agents to use for training
     num_agents_per_team = 8
     max_episode_length = 512  # Number of steps per episode
     num_maps = 256  # Number of maps to use for training
