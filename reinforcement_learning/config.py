@@ -56,8 +56,8 @@ class Config:
     runaway_fog_weight = 0.01
     local_superiority_weight = 0.01
     local_area_dist = 5
-    concentrate_fire_weight = 0.1
-    superior_fire_weight = 0.1
+    superior_fire_weight = 0.01
+    kill_bonus_weight = 0.1
     key_achievement_weight = 1.0
 
     survival_mode_criteria = 35  # of the health, food, water levels
