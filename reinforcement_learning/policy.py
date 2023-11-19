@@ -100,7 +100,7 @@ class CommEncoder(torch.nn.Module):
   def __init__(self, input_size, comm_obs_n, token_num):
     super().__init__()
     self.token_num = token_num
-    self.comm_fc = torch.nn.Linear((token_num+3)*comm_obs_n, input_size)
+    self.comm_fc = torch.nn.Linear((token_num+4)*comm_obs_n, input_size)
 
   def forward(self, comm_obs, my_id):
     # Input shape: (batch_size, 100, 4)
@@ -110,7 +110,7 @@ class CommEncoder(torch.nn.Module):
     comm_tensor = torch.cat((
       self_mask.unsqueeze(-1),  # 1 indicate self
       comm_obs[:, :, 1:3],  # row, col
-      torch.nn.functional.one_hot(tokens, num_classes=self.token_num)
+      torch.nn.functional.one_hot(tokens, num_classes=self.token_num + 1)  # include 0
     ), dim=2).float()
     comm_tensor = comm_tensor.view(comm_tensor.size(0), -1)
     return self.comm_fc(comm_tensor)
