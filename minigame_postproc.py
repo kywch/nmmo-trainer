@@ -139,6 +139,9 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/inner_npc_num"] = self.env.game.inner_npc_num
                 info["stats"][game_name+"/spawned_npc"] = abs(self.env.realm.npcs.next_id+1)
 
+            if isinstance(self.env.game, tg.CommTogether):
+                info["stats"][game_name+"/num_player_resurrect"] = self.env.game.num_player_resurrect
+
         return reward, done, info
 
     def is_env_done(self):
