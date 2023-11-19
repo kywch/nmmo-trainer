@@ -272,8 +272,11 @@ class Postprocessor(MiniGamePostprocessor):
                 # if self._vof_superiority > 0 and self._team_fire_utilization > 0:
                 #     reward += self.superior_fire_weight*self._team_fire_utilization
 
-                # Score kill, only when dead players are NOT resurrected, like CommTogether
-                if not isinstance(self.env.game, tg.CommTogether):
+                # Score kill
+                if isinstance(self.env.game, tg.CommTogether):
+                  # give much less kill bonus because players can be resurrected
+                  reward += self.superior_fire_weight * self._player_kill
+                else:
                   reward += self.kill_bonus_weight * self._player_kill
 
                 # Penalize dying futilely
