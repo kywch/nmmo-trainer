@@ -29,7 +29,7 @@ class Baseline(pufferlib.models.Policy):
 
     map_size, token_num = self.config.MAP_SIZE, self.config.COMMUNICATION_NUM_TOKENS
     comm_obs_n = env.structured_observation_space["Communication"].shape[0]
-    self.comm_encoder = CommEncoder(input_size, map_size, token_num, comm_obs_n)
+    self.comm_encoder = CommEncoder(input_size, comm_obs_n, token_num)
 
     self.proj_fc = torch.nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
@@ -97,40 +97,23 @@ class TileEncoder(torch.nn.Module):
 
 
 class CommEncoder(torch.nn.Module):
-  def __init__(self, input_size, map_size, token_num, comm_obs_n,
-               embed_dim=32):
+  def __init__(self, input_size, comm_obs_n, token_num):
     super().__init__()
-    self.map_size = map_size
     self.token_num = token_num
-    self.pos_embedding = torch.nn.Embedding(map_size*map_size, embed_dim)
-    self.comm_embedding = torch.nn.Embedding(map_size*map_size*token_num, embed_dim)
-    self.comm_fc = torch.nn.Linear(embed_dim*(2*comm_obs_n+1), input_size)
+    self.comm_fc = torch.nn.Linear((token_num+3)*comm_obs_n, input_size)
 
   def forward(self, comm_obs, my_id):
     # Input shape: (batch_size, 100, 4)
     agent_ids = comm_obs[:, :, 0].int()
-    row_indices = comm_obs[:, :, 1].int()
-    col_indices = comm_obs[:, :, 2].int()
-    tokens = comm_obs[:, :, 3].int()
-
-    pos_idx = row_indices * self.map_size + col_indices
-    pos_embeddings = self.pos_embedding(pos_idx)
-
-    token_idx = pos_idx * self.token_num + tokens
-    token_embeddings = self.comm_embedding(token_idx)
-
-    # Pull out rows corresponding to the agent
-    mask = (agent_ids == my_id.unsqueeze(1)) & (agent_ids != 0)
-    mask = mask.int()
-    row_indices = torch.where(
-        mask.any(dim=1), mask.argmax(dim=1), torch.zeros_like(mask.sum(dim=1)))
-    my_pos_embeddings = pos_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
-    my_token_embeddings = token_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
-
-    embeddings = torch.cat((pos_embeddings, token_embeddings), dim=2)
-    embeddings = embeddings.view(embeddings.size(0), -1)
-    embeddings = torch.cat([my_pos_embeddings, embeddings], dim=1)
-    return self.comm_fc(embeddings)
+    self_mask = (agent_ids == my_id.unsqueeze(1)) & (agent_ids != 0)
+    tokens = comm_obs[:, :, 3].long()
+    comm_tensor = torch.cat((
+      self_mask.unsqueeze(-1),  # 1 indicate self
+      comm_obs[:, :, 1:3],  # row, col
+      torch.nn.functional.one_hot(tokens, num_classes=self.token_num)
+    ), dim=2).float()
+    comm_tensor = comm_tensor.view(comm_tensor.size(0), -1)
+    return self.comm_fc(comm_tensor)
 
 
 class PlayerEncoder(torch.nn.Module):

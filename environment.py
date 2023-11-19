@@ -188,7 +188,7 @@ class Postprocessor(MiniGamePostprocessor):
             if entity[EntityAttr["id"]] < 0:
                 npc_type = entity[EntityAttr["npc_type"]]
                 self._entity_map[ent_pos] = max(npc_type, self._entity_map[ent_pos])
-            if entity[EntityAttr["id"]] > 0:
+            if entity[EntityAttr["id"]] > 0 and entity[EntityAttr["npc_type"]] == 0:
                 self._entity_map[ent_pos] = max(ENEMY_REPR, self._entity_map[ent_pos])
                 if entity[EntityAttr["id"]] in self._target_destroy:
                     self._entity_map[ent_pos] = max(DESTROY_TARGET_REPR, self._entity_map[ent_pos])
@@ -263,16 +263,19 @@ class Postprocessor(MiniGamePostprocessor):
             if self.env.config.COMBAT_SYSTEM_ENABLED:
                 # Local superiority bonus
                 reward += self.local_superiority_weight * self._local_superiority
-                # Concentrate fire bonus, i.e., reward more than one hit on the same target
-                reward += self.superior_fire_weight * (self._concentrate_fire - 1)
+                # Get reward for any hit, and bonus for concentrated fire
+                reward += self.superior_fire_weight * self._concentrate_fire
                 # Fire during superiority -- try to make agents aggressive when having number advantage
                 if (self._local_superiority > 0 or self._vof_superiority > 0) and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
                 # Team bonus for higher fire utilization, when superior
                 # if self._vof_superiority > 0 and self._team_fire_utilization > 0:
                 #     reward += self.superior_fire_weight*self._team_fire_utilization
-                # Score kill
-                reward += self.kill_bonus_weight * self._player_kill
+
+                # Score kill, only when dead players are NOT resurrected, like CommTogether
+                if not isinstance(self.env.game, tg.CommTogether):
+                  reward += self.kill_bonus_weight * self._player_kill
+
                 # Penalize dying futilely
                 if done and (self._local_superiority < 0 or self._vof_superiority < 0):
                     reward = -1
