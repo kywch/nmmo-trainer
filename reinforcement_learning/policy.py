@@ -27,9 +27,9 @@ class Baseline(pufferlib.models.Policy):
     task_size = env.structured_observation_space["Task"].shape[0]
     self.task_encoder = TaskEncoder(input_size, hidden_size, task_size)
 
-    map_size, token_num = self.config.MAP_SIZE, self.config.COMMUNICATION_NUM_TOKENS
+    token_num = self.config.COMMUNICATION_NUM_TOKENS
     comm_obs_n = env.structured_observation_space["Communication"].shape[0]
-    self.comm_encoder = CommEncoder(input_size, comm_obs_n, token_num)
+    self.comm_encoder = CommEncoder(input_size, hidden_size, comm_obs_n, token_num)
 
     self.proj_fc = torch.nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
@@ -97,10 +97,11 @@ class TileEncoder(torch.nn.Module):
 
 
 class CommEncoder(torch.nn.Module):
-  def __init__(self, input_size, comm_obs_n, token_num):
+  def __init__(self, input_size, hidden_size, comm_obs_n, token_num):
     super().__init__()
     self.token_num = token_num
-    self.comm_fc = torch.nn.Linear((token_num+4)*comm_obs_n, input_size)
+    self.comm_fc1 = torch.nn.Linear((token_num+4)*comm_obs_n, hidden_size)
+    self.comm_fc2 = torch.nn.Linear(hidden_size, input_size)
 
   def forward(self, comm_obs, my_id):
     # Input shape: (batch_size, 100, 4)
@@ -110,10 +111,11 @@ class CommEncoder(torch.nn.Module):
     comm_tensor = torch.cat((
       self_mask.unsqueeze(-1),  # 1 indicate self
       comm_obs[:, :, 1:3],  # row, col
-      torch.nn.functional.one_hot(tokens, num_classes=self.token_num + 1)  # include 0
+      F.one_hot(tokens, num_classes=self.token_num + 1)  # include 0
     ), dim=2).float()
     comm_tensor = comm_tensor.view(comm_tensor.size(0), -1)
-    return self.comm_fc(comm_tensor)
+    comm_tensor = F.relu(self.comm_fc1(comm_tensor))
+    return self.comm_fc2(comm_tensor)
 
 
 class PlayerEncoder(torch.nn.Module):
