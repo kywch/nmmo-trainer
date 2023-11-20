@@ -54,7 +54,7 @@ class MiniAgentTraining(ga.AgentTraining):
         self.config.set_for_episode("DEATH_FOG_FINAL_SIZE", 0)
 
 class MiniTeamTraining(ga.TeamTraining):
-    required_systems = ["TERRAIN", "COMBAT"]
+    required_systems = ["TERRAIN", "COMBAT", "COMMUNICATION"]
 
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
@@ -63,7 +63,7 @@ class MiniTeamTraining(ga.TeamTraining):
         combat_training_config(self.config)
 
 class MiniTeamBattle(ga.TeamBattle):
-    required_systems = ["TERRAIN", "COMBAT"]
+    required_systems = ["TERRAIN", "COMBAT", "COMMUNICATION"]
 
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
@@ -115,10 +115,8 @@ class EasyKingoftheHill(KingoftheHill):
     def _set_config(self, np_random):
         super()._set_config(np_random)
         # make the game easier by decreasing the resource demands/penalty
-        self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 2)
-        self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)  # 100%
-        self.config.set_for_episode("RESOURCE_DAMAGE_REDUCTION", 0.2)  # reduce to 20%
-        self.config.set_for_episode("RESOURCE_HEALTH_RESTORE_FRACTION", .02)
+        self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 3)  # from 5
+        self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)
 
 class EasyKingoftheQuad(EasyKingoftheHill):
     _next_seize_target = None
