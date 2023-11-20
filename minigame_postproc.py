@@ -141,6 +141,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
 
             if isinstance(self.env.game, tg.CommTogether):
                 info["stats"][game_name+"/num_player_resurrect"] = self.env.game.num_player_resurrect
+                info["stats"][game_name+"/spawn_immunity"] = self.env.game._spawn_immunity
 
         return reward, done, info
 
