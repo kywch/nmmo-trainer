@@ -168,6 +168,10 @@ class Sandwich(mg.Sandwich):
 class CommTogether(mg.CommTogether):
     _next_grass_map = None
 
+    def __init(self, env, sampling_weight=None):
+        super().__init__(env, sampling_weight)
+        self._map_size = 80  # start from a large map
+
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
