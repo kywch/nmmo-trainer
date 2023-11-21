@@ -40,7 +40,7 @@ class MiniAgentTraining(ga.AgentTraining):
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
 
-    def _set_config(self, np_random):
+    def _set_config(self):
         self.config.reset()
         self.config.toggle_systems(self.required_systems)
 
@@ -54,13 +54,14 @@ class MiniAgentTraining(ga.AgentTraining):
         self.config.set_for_episode("DEATH_FOG_FINAL_SIZE", 0)
 
 class MiniTeamTraining(ga.TeamTraining):
-    required_systems = ["TERRAIN", "COMBAT", "COMMUNICATION"]
+    required_systems = ["TERRAIN", "COMBAT", "COMMUNICATION", "NPC"]
 
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
 
-    def _set_config(self, np_random):
+    def _set_config(self):
         combat_training_config(self.config)
+        self.config.set_for_episode("NPC_N", self.config.PLAYER_N)
 
 class MiniTeamBattle(ga.TeamBattle):
     required_systems = ["TERRAIN", "COMBAT", "COMMUNICATION"]
@@ -68,11 +69,11 @@ class MiniTeamBattle(ga.TeamBattle):
     def is_compatible(self):
         return self.config.are_systems_enabled(self.required_systems)
 
-    def _set_config(self, np_random):
+    def _set_config(self):
         combat_training_config(self.config)
 
-    def _define_tasks(self, np_random):
-        sampled_spec = self._get_cand_team_tasks(np_random, num_tasks=1, tags="team_battle")[0]
+    def _define_tasks(self):
+        sampled_spec = self._get_cand_team_tasks(num_tasks=1, tags="team_battle")[0]
         return task_spec.make_task_from_spec(self.config.TEAMS,
                                              [sampled_spec] * len(self.config.TEAMS))
 
@@ -84,7 +85,7 @@ class RacetoCenter(mg.RacetoCenter):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
-    def _define_tasks(self, np_random):
+    def _define_tasks(self):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
@@ -94,26 +95,21 @@ class RacetoCenter(mg.RacetoCenter):
         return task_spec.make_task_from_spec(self.config.POSSIBLE_AGENTS, race_task)
 
 class KingoftheHill(mg.KingoftheHill):
-    num_game_won = 3  # wins to increase seize duration
-
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
 
-    def _define_tasks(self, np_random):
+    def _define_tasks(self):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
         team_task = [spec for spec in curriculum if "king_hill" in spec.tags and "center" in spec.tags]
         assert len(team_task) == 1, "There should be only one task with the tag"
         team_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
-        team_task *= len(self.teams)
-        return task_spec.make_task_from_spec(self.teams, team_task)
+        return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
 class EasyKingoftheHill(KingoftheHill):
-    num_game_won = 1  # wins to increase seize duration
-
-    def _set_config(self, np_random):
-        super()._set_config(np_random)
+    def _set_config(self):
+        super()._set_config()
         # make the game easier by decreasing the resource demands/penalty
         self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 3)  # from 5
         self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)
@@ -126,16 +122,16 @@ class EasyKingoftheQuad(EasyKingoftheHill):
         assert target in self.quadrants, "Invalid target"
         self._next_seize_target = target
 
-    def _set_realm(self, np_random, map_dict):
+    def _set_realm(self, map_dict):
         if self._next_seize_target is None:
-            self._next_seize_target = np_random.choice(self.quadrants)
-        self.realm.reset(np_random, map_dict, custom_spawn=True,
+            self._next_seize_target = self._np_random.choice(self.quadrants)
+        self.realm.reset(self._np_random, map_dict, custom_spawn=True,
                          seize_targets=[self._next_seize_target])
         # team spawn requires custom spawning
-        team_loader = team_helper.TeamLoader(self.config, np_random)
+        team_loader = team_helper.TeamLoader(self.config, self._np_random)
         self.realm.players.spawn(team_loader)
 
-    def _define_tasks(self, np_random):
+    def _define_tasks(self):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
@@ -144,8 +140,7 @@ class EasyKingoftheQuad(EasyKingoftheHill):
         self._next_seize_target = None
         assert len(team_task) == 1, "There should be only one task with the tag"
         team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
-        team_task *= len(self.teams)
-        return task_spec.make_task_from_spec(self.teams, team_task)
+        return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
 class Sandwich(mg.Sandwich):
     _next_grass_map = None
@@ -156,20 +151,19 @@ class Sandwich(mg.Sandwich):
     def set_grass_map(self, grass_map):
         self._next_grass_map = grass_map
 
-    def _set_config(self, np_random):
+    def _set_config(self):
         # randomly select whether to use the terrain map or grass map
-        self._grass_map = self._next_grass_map or np_random.choice([True, False], p=[0.2, 0.8])
-        super()._set_config(np_random)
+        self._grass_map = self._next_grass_map or self._np_random.choice([True, False], p=[0.2, 0.8])
+        super()._set_config()
 
-    def _define_tasks(self, np_random):
+    def _define_tasks(self):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
         team_task = [spec for spec in curriculum if "king_hill" in spec.tags and "center" in spec.tags]
         assert len(team_task) == 1, "There should be only one task with the tag"
         team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
-        team_task *= len(self.teams)
-        return task_spec.make_task_from_spec(self.teams, team_task)
+        return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
 class CommTogether(mg.CommTogether):
     _next_grass_map = None
@@ -180,15 +174,38 @@ class CommTogether(mg.CommTogether):
     def set_grass_map(self, grass_map):
         self._next_grass_map = grass_map
 
-    def _set_config(self, np_random):
+    def _set_config(self):
         # randomly select whether to use the terrain map or grass map
-        self._grass_map = self._next_grass_map or np_random.choice([True, False], p=[0.2, 0.8])
-        super()._set_config(np_random)
+        self._grass_map = self._next_grass_map or self._np_random.choice([True, False])
+        super()._set_config()
 
-    def _define_tasks(self, np_random):
+    def _define_tasks(self):
         # Changed to use the curriculum file
         with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
           curriculum = dill.load(f) # a list of TaskSpec
         team_task = [spec for spec in curriculum if "comm_together" in spec.tags]
         assert len(team_task) == 1, "There should be only one task with the tag"
+        return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
+
+class RadioRaid(mg.RadioRaid):
+    _next_grass_map = None
+
+    def is_compatible(self):
+        return check_curriculum_file(self.config) and super().is_compatible()
+
+    def set_grass_map(self, grass_map):
+        self._next_grass_map = grass_map
+
+    def _set_config(self):
+        # randomly select whether to use the terrain map or grass map
+        self._grass_map = self._next_grass_map or self._np_random.choice([True, False])
+        super()._set_config()
+
+    def _define_tasks(self):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        team_task = [spec for spec in curriculum if "radio_raid" in spec.tags]
+        assert len(team_task) == 1, "There should be only one task with the tag"
+        team_task[0].eval_fn_kwargs["num_agent"] = self.goal_num_npc
         return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))

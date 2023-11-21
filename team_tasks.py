@@ -138,6 +138,19 @@ curriculum.append(
              reward_to="team",
              tags=["comm_together"]))
 
+for num_npc in [5, 10, 15, 20, 30, 50, 70, 100, 150, 200]:
+    curriculum.append(
+        TaskSpec(eval_fn=DefeatEntity,
+                 eval_fn_kwargs={"agent_type": "npc", "level": 0, "num_agent": num_npc},
+                 reward_to="team"))
+
+curriculum.append(
+    TaskSpec(eval_fn=DefeatEntity,
+              eval_fn_kwargs={"agent_type": "npc", "level": 0, "num_agent": 200},
+              reward_to="team",
+              tags=["radio_raid"]))
+
+
 if __name__ == "__main__":
     # Import the custom curriculum
     print("------------------------------------------------------------")

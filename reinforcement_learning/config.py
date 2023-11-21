@@ -59,6 +59,7 @@ class Config:
     superior_fire_weight = 0.01
     kill_bonus_weight = 1.0
     key_achievement_weight = 1.0
+    task_progress_weight = 0.01
 
     survival_mode_criteria = 35  # of the health, food, water levels
     get_resource_criteria = 75

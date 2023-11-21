@@ -54,7 +54,8 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC, cfg.Com
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
                                 (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1),
-                                (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), (tg.CommTogether, 1),])
+                                (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), (tg.CommTogether, 1),
+                                (tg.RadioRaid, 1)])
 
 def make_env_creator(args: Namespace):
     def env_creator():
@@ -70,6 +71,7 @@ def make_env_creator(args: Namespace):
                 "superior_fire_weight": args.superior_fire_weight,
                 "kill_bonus_weight": args.kill_bonus_weight,
                 "key_achievement_weight": args.key_achievement_weight,
+                "task_progress_weight": args.task_progress_weight,
                 "survival_mode_criteria": args.survival_mode_criteria,
                 "get_resource_criteria": args.get_resource_criteria,
                 "get_resource_weight": args.get_resource_weight,
@@ -90,6 +92,7 @@ class Postprocessor(MiniGamePostprocessor):
             superior_fire_weight=0,
             kill_bonus_weight=0,
             key_achievement_weight=0,
+            task_progress_weight=0,
             survival_mode_criteria=35,
             get_resource_criteria=75,
             get_resource_weight=0,
@@ -106,6 +109,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.superior_fire_weight = superior_fire_weight
         self.kill_bonus_weight = kill_bonus_weight
         self.key_achievement_weight = key_achievement_weight
+        self.task_progress_weight = task_progress_weight
 
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
@@ -197,13 +201,6 @@ class Postprocessor(MiniGamePostprocessor):
                 if entity[EntityAttr["id"]] in self._target_protect:
                     self._entity_map[ent_pos] = max(PROTECT_TARGET_REPR, self._entity_map[ent_pos])
 
-        # Also process the Comm obs to map the teammates outside the visual range
-        # self._comm_map[:] = 0
-        # for comm in obs["Communication"]:
-        #     r, c = comm[CommAttr["row"]], comm[CommAttr["col"]]
-        #     self._comm_map[0,r,c] = comm[CommAttr["message"]]  # max should be 255
-        # self._comm_map[1,obs["Tile"][:,0],obs["Tile"][:,1]] = 1  # mark the visible tiles
-
     def _augment_tile_obs(self, obs):
         # assume updated entity map
         entity = self._entity_map[obs["Tile"][:,0],obs["Tile"][:,1]]
@@ -290,6 +287,11 @@ class Postprocessor(MiniGamePostprocessor):
                 if agent.resources.health_restore > 5:  # health restored when water, food >= 50
                     reward += self.heal_bonus_weight
 
+            if isinstance(self.env.game, tg.CommTogether) and self._new_max_progress:
+                # Reward from this task seems too small to encourage learning
+                # Provide extra reward when the agents beat the prev max progress
+                reward += self.task_progress_weight
+
             if self.env.realm.map.seize_targets and self._seize_tile > 0:
                 # _seize_tile > 0 if the agent have just seized the target
                 reward += self.key_achievement_weight
@@ -353,6 +355,10 @@ class Postprocessor(MiniGamePostprocessor):
         self._prev_drink_dist = np.inf
         self._curr_dist = np.inf
 
+        # task progress
+        self._max_task_progress = 0
+        self._new_max_progress = False
+
     def _update_reward_vars(self, agent):
         tick_log = self.env.realm.event_log.get_data(agents=self._my_task.assignee, tick=-1)
         attr_to_col = self.env.realm.event_log.attr_to_col
@@ -367,6 +373,11 @@ class Postprocessor(MiniGamePostprocessor):
             my_sieze = (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
                        (tick_log[:,attr_to_col["event"]] == EventCode.SEIZE_TILE)
             self._seize_tile = sum(my_sieze)
+
+        # Task progress
+        if self._my_task.progress > self._max_task_progress:
+          self._new_max_progress = True if self.env.realm.tick > 1 else False
+          self._max_task_progress = self._my_task.progress
 
         # System-dependent reward vars
         self._update_combat_reward_vars(agent, tick_log, attr_to_col)

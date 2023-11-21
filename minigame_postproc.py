@@ -80,7 +80,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             done = True
             reward = -1.0
 
-        if self.is_env_done():
+        if self.env.game.is_over:
             done = True
             reward = -1.0
             if self.env.game.winners and self.agent_id in self.env.game.winners:
@@ -115,7 +115,7 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
             # "return" is used for ranking in the eval mode, so put the task progress here
             info["return"] = self._max_task_progress  # this is 1 if done
 
-        if self.detailed_stat and self.is_env_done() and \
+        if self.detailed_stat and self.env.game.is_over and \
            self.agent_id == min(self.env.agents):  # to avoid duplicate stats
             game_name = self.env.game.__class__.__name__
             for key, val in self.env.game.get_episode_stats().items():
@@ -143,13 +143,11 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/num_player_resurrect"] = self.env.game.num_player_resurrect
                 info["stats"][game_name+"/spawn_immunity"] = self.env.game._spawn_immunity
 
-        return reward, done, info
+            if isinstance(self.env.game, tg.RadioRaid):
+                info["stats"][game_name+"/goal_num_npc"] = self.env.game.goal_num_npc
+                info["stats"][game_name+"/spawned_npc"] = abs(self.env.realm.npcs.next_id+1)
 
-    def is_env_done(self):
-        # When there are declared winners (i.e. only one team left) or the time is up
-        return self.env.game.winners or \
-               self.env.realm.tick >= self.env.realm.config.HORIZON or \
-               self.env.realm.num_players == 0
+        return reward, done, info
 
 # convert the numbers into binary (performed or not) for the key events
 KEY_EVENT = [
