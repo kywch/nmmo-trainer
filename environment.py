@@ -119,11 +119,12 @@ class Postprocessor(MiniGamePostprocessor):
 
         self._reset_reward_vars()
 
-        # placeholder for the maps
+        # placeholder for the tile-based maps
         self._entity_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._comm_map = np.zeros((2, self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._rally_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._rally_target = None
+        self._can_see_target = False
 
         # dist map should not change from episode to episode
         self._dist_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
@@ -131,6 +132,14 @@ class Postprocessor(MiniGamePostprocessor):
         for i in range(center):
             l, r = i, self.config.MAP_SIZE - i
             self._dist_map[l:r, l:r] = center - i - 1
+
+        # placeholder for the comm-based maps
+        self._comm_down_sample = 8  # 160 -> 20
+        self._comm_channels = 5  # num_team_member, status, npc, enemy, target
+        self._comm_map_dim = (self._comm_channels,
+                              self.config.MAP_SIZE//self._comm_down_sample,
+                              self.config.MAP_SIZE//self._comm_down_sample)
+        self._comm_map = np.zeros(self._comm_map_dim, dtype=np.int16)
 
     def reset(self, observation):
         super().reset(observation)
@@ -167,6 +176,9 @@ class Postprocessor(MiniGamePostprocessor):
         tile_dim = obs_space["Tile"].shape[1] + add_dim
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
+        # Make down-sampled 2d map from the comm obs
+        obs_space["Communication"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
+                                                    shape=self._comm_map_dim)
         return obs_space
 
     def observation(self, obs):
@@ -178,6 +190,7 @@ class Postprocessor(MiniGamePostprocessor):
         # Parse and augment tile obs
         self._update_entity_map(obs)
         obs["Tile"] = self._augment_tile_obs(obs)
+        obs["Communication"] = self._get_comm_obs(obs)
 
         # Do NOT attack teammates
         obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
@@ -216,9 +229,39 @@ class Postprocessor(MiniGamePostprocessor):
         else:
             rally_point = np.zeros_like(rally_dist)
 
+        # To communicate if the agent can see the target
+        self._can_see_target = np.sum(entity == DESTROY_TARGET_REPR) > 0 or \
+                               (self._rally_target is not None and np.sum(rally_point == 0) > 0)
+
         maps = [obs["Tile"], dist[:,None], obstacle[:,None], food[:,None], water[:,None],
                 entity[:,None], rally_dist[:,None], rally_point[:,None]]
         return np.concatenate(maps, axis=1).astype(np.int16)
+
+    def _get_comm_obs(self, obs):
+        self._comm_map[:] = 0
+        if not self.env.config.COMMUNICATION_SYSTEM_ENABLED:
+            return self._comm_map
+        valid_idx = obs["Communication"][:, 0] > 0
+        comm_obs = obs["Communication"][valid_idx]
+        row_indices = comm_obs[:, 1] // self._comm_down_sample
+        col_indices = comm_obs[:, 2] // self._comm_down_sample
+        msg_target = comm_obs[:, 3] // 2**5
+        msg_health = comm_obs[:, 3] % 4  # NOTE: 0 for dummy
+        msg_enemy = (comm_obs[:, 3] // 2**4) % 4
+        msg_npc = (comm_obs[:, 3] // 2**2) % 4
+        for idx in range(comm_obs.shape[0]):
+            # channel 0: num team mates
+            row, col = row_indices[idx], col_indices[idx]
+            self._comm_map[0, row, col] += 1
+            # channel 1: max(target present)
+            self._comm_map[1, row, col] = max(msg_target[idx], self._comm_map[1, row, col])
+            # channel 2: min(team mates health)
+            self._comm_map[2, row, col] = min(max(msg_health[idx], 1), self._comm_map[2, row, col])
+            # channel 3: max(enemy density)
+            self._comm_map[3, row, col] = max(msg_enemy[idx], self._comm_map[3, row, col])
+            # channel 4: max(npc density)
+            self._comm_map[4, row, col] = max(msg_npc[idx], self._comm_map[4, row, col])
+        return self._comm_map
 
     def _process_attack_mask(self, obs):
         mask = obs["ActionTargets"]["Attack"]["Target"]
@@ -234,8 +277,24 @@ class Postprocessor(MiniGamePostprocessor):
 
     def action(self, action):
         """Called before actions are passed from the model to the environment"""
-        self._prev_moves.append(action[2])  # 2 is the index for move direction
+        self._prev_moves.append(action[3])  # 3 is the index for move direction
+
+        # Override communication with manually computed one
+        # NOTE: Can this be learned from scratch?
+        action[2] = self._compute_comm_action()
         return action
+
+    def _compute_comm_action(self):
+        # comm action values range from 0 - 127, 0: dummy obs
+        if self.agent_id not in self.env.realm.players:
+            return 0
+        agent = self.env.realm.players[self.agent_id]
+        my_health = (agent.resources.health.val // 34) + 1  # 1 - 3
+        num_enemy = np.sum(np.isin(self._entity_map, [ENEMY_REPR, DESTROY_TARGET_REPR]))
+        peri_enemy = min((num_enemy+3)//4, 3)  # 0: no enemy, 1: 1-4, 2: 5-8, 3: 9+
+        num_npc = np.sum(np.isin(self._entity_map, [PASSIVE_REPR, NEUTRAL_REPR, HOSTILE_REPR]))
+        peri_npc = min((num_npc+3)//4, 3)  # 0: no npc, 1: 1-4, 2: 5-8, 3: 9+
+        return self._can_see_target << 5 | int(peri_enemy) << 4 | int(peri_npc) << 2 | int(my_health)
 
     def reward_done_info(self, reward, done, info):
         """Called on reward, done, and info before they are returned from the environment"""
