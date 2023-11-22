@@ -16,6 +16,7 @@ from nmmo.entity.entity import EntityState, CommAttr
 
 from minigame_postproc import MiniGamePostprocessor
 import team_games as tg
+import postproc_helper as pph
 
 EntityAttr = EntityState.State.attr_name_to_col
 CommAttr = {"id": 0, "row": 1, "col": 2, "message": 3}
@@ -30,7 +31,6 @@ ENEMY_REPR = 4
 DESTROY_TARGET_REPR = 5
 TEAMMATE_REPR = 6
 PROTECT_TARGET_REPR = 7
-
 
 class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC, cfg.Communication):
     """Configuration for Neural MMO."""
@@ -134,6 +134,7 @@ class Postprocessor(MiniGamePostprocessor):
             self._dist_map[l:r, l:r] = center - i - 1
 
         # placeholder for the comm-based maps
+        self._entity_obs = None  # placeholder
         self._comm_down_sample = 8  # 160 -> 20
         self._comm_channels = 5  # num_team_member, status, npc, enemy, target
         self._comm_map_dim = (self._comm_channels,
@@ -156,7 +157,7 @@ class Postprocessor(MiniGamePostprocessor):
             for key in ["target", "target_destroy"]:
                 if key in self._my_task.kwargs:
                     target = self._my_task.kwargs[key]
-                    self.target_destroy = [target] if isinstance(target, int) else target
+                    self._target_destroy = [target] if isinstance(target, int) else target
             if "SeizeCenter" in self._my_task.name or "ProgressTowardCenter" in self._my_task.name:
                 self._rally_target = self.env.realm.map.center_coord
                 self._rally_map = np.copy(self._dist_map)
@@ -166,6 +167,16 @@ class Postprocessor(MiniGamePostprocessor):
                 for r in range(self.config.MAP_SIZE):
                     for c in range(self.config.MAP_SIZE):
                         self._rally_map[r,c] = utils.linf_single((r,c), self._rally_target)
+
+        self.const_dict = {
+            "my_team": set(self._my_task.assignee),
+            "target_destroy": set(self._target_destroy),
+            "target_protect": set(self._target_protect),
+            "ENEMY_REPR": ENEMY_REPR,
+            "DESTROY_TARGET_REPR": TEAMMATE_REPR,
+            "TEAMMATE_REPR": TEAMMATE_REPR,
+            "PROTECT_TARGET_REPR": PROTECT_TARGET_REPR,
+        }
 
     @property
     def observation_space(self):
@@ -177,8 +188,8 @@ class Postprocessor(MiniGamePostprocessor):
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
         # Make down-sampled 2d map from the comm obs
-        obs_space["Communication"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
-                                                    shape=self._comm_map_dim)
+        # obs_space["Communication"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
+        #                                             shape=self._comm_map_dim)
         return obs_space
 
     def observation(self, obs):
@@ -188,31 +199,35 @@ class Postprocessor(MiniGamePostprocessor):
         define the observation space again (i.e. Gym.spaces.Dict(gym.spaces....))
         """
         # Parse and augment tile obs
-        self._update_entity_map(obs)
+        # see tests/test_update_entity_map.py for the reference python implementation
+        self._entity_obs = obs["Entity"]  # save for later use
+        pph.update_entity_map(self._entity_map, obs["Entity"], EntityAttr, self.const_dict)
+        #self._update_entity_map(obs)
         obs["Tile"] = self._augment_tile_obs(obs)
-        obs["Communication"] = self._get_comm_obs(obs)
+        #obs["Communication"] = self._get_comm_obs(obs)
 
         # Do NOT attack teammates
         obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
         return obs
 
-    def _update_entity_map(self, obs):
-        # Process entity obs
-        self._entity_map[:] = 0
-        entity_idx = obs["Entity"][:,EntityAttr["id"]] != 0
-        for entity in obs["Entity"][entity_idx]:
-            ent_pos = (entity[EntityAttr["row"]], entity[EntityAttr["col"]])
-            if entity[EntityAttr["id"]] < 0:
-                npc_type = entity[EntityAttr["npc_type"]]
-                self._entity_map[ent_pos] = max(npc_type, self._entity_map[ent_pos])
-            if entity[EntityAttr["id"]] > 0 and entity[EntityAttr["npc_type"]] == 0:
-                self._entity_map[ent_pos] = max(ENEMY_REPR, self._entity_map[ent_pos])
-                if entity[EntityAttr["id"]] in self._target_destroy:
-                    self._entity_map[ent_pos] = max(DESTROY_TARGET_REPR, self._entity_map[ent_pos])
-                if entity[EntityAttr["id"]] in self._my_task.assignee:
-                    self._entity_map[ent_pos] = max(TEAMMATE_REPR, self._entity_map[ent_pos])
-                if entity[EntityAttr["id"]] in self._target_protect:
-                    self._entity_map[ent_pos] = max(PROTECT_TARGET_REPR, self._entity_map[ent_pos])
+    # NOTE: using the cython implementation
+    # def _update_entity_map(self, obs):
+    #     # Process entity obs
+    #     self._entity_map[:] = 0
+    #     entity_idx = obs["Entity"][:,EntityAttr["id"]] != 0
+    #     for entity in obs["Entity"][entity_idx]:
+    #         ent_pos = (entity[EntityAttr["row"]], entity[EntityAttr["col"]])
+    #         if entity[EntityAttr["id"]] < 0:
+    #             npc_type = entity[EntityAttr["npc_type"]]
+    #             self._entity_map[ent_pos] = max(npc_type, self._entity_map[ent_pos])
+    #         if entity[EntityAttr["id"]] > 0 and entity[EntityAttr["npc_type"]] == 0:
+    #             self._entity_map[ent_pos] = max(ENEMY_REPR, self._entity_map[ent_pos])
+    #             if entity[EntityAttr["id"]] in self._target_destroy:
+    #                 self._entity_map[ent_pos] = max(DESTROY_TARGET_REPR, self._entity_map[ent_pos])
+    #             if entity[EntityAttr["id"]] in self._my_task.assignee:
+    #                 self._entity_map[ent_pos] = max(TEAMMATE_REPR, self._entity_map[ent_pos])
+    #             if entity[EntityAttr["id"]] in self._target_protect:
+    #                 self._entity_map[ent_pos] = max(PROTECT_TARGET_REPR, self._entity_map[ent_pos])
 
     def _augment_tile_obs(self, obs):
         # assume updated entity map
@@ -237,31 +252,38 @@ class Postprocessor(MiniGamePostprocessor):
                 entity[:,None], rally_dist[:,None], rally_point[:,None]]
         return np.concatenate(maps, axis=1).astype(np.int16)
 
-    def _get_comm_obs(self, obs):
-        self._comm_map[:] = 0
-        if not self.env.config.COMMUNICATION_SYSTEM_ENABLED:
-            return self._comm_map
-        valid_idx = obs["Communication"][:, 0] > 0
-        comm_obs = obs["Communication"][valid_idx]
-        row_indices = comm_obs[:, 1] // self._comm_down_sample
-        col_indices = comm_obs[:, 2] // self._comm_down_sample
-        msg_target = comm_obs[:, 3] // 2**5
-        msg_health = comm_obs[:, 3] % 4  # NOTE: 0 for dummy
-        msg_enemy = (comm_obs[:, 3] // 2**4) % 4
-        msg_npc = (comm_obs[:, 3] // 2**2) % 4
-        for idx in range(comm_obs.shape[0]):
-            # channel 0: num team mates
-            row, col = row_indices[idx], col_indices[idx]
-            self._comm_map[0, row, col] += 1
-            # channel 1: max(target present)
-            self._comm_map[1, row, col] = max(msg_target[idx], self._comm_map[1, row, col])
-            # channel 2: min(team mates health)
-            self._comm_map[2, row, col] = min(max(msg_health[idx], 1), self._comm_map[2, row, col])
-            # channel 3: max(enemy density)
-            self._comm_map[3, row, col] = max(msg_enemy[idx], self._comm_map[3, row, col])
-            # channel 4: max(npc density)
-            self._comm_map[4, row, col] = max(msg_npc[idx], self._comm_map[4, row, col])
-        return self._comm_map
+    # def _get_comm_obs(self, obs):
+    #     if not self.env.config.COMMUNICATION_SYSTEM_ENABLED:
+    #         return self._dummy_comm_map
+    #     comm_obs = obs["Communication"]
+    #     valid_idx = comm_obs[:, 0] > 0
+    #     if not np.any(valid_idx):
+    #         return self._dummy_comm_map
+
+    #     self._tmp_comm_map[:] = 0
+    #     tmp_idx = self._tmp_idx[valid_idx]
+    #     row_indices = comm_obs[valid_idx, 1] // self._comm_down_sample
+    #     col_indices = comm_obs[valid_idx, 2] // self._comm_down_sample
+    #     msg_target = comm_obs[valid_idx, 3] // 2**5
+    #     msg_health = np.maximum(comm_obs[valid_idx, 3] % 4, np.ones_like(tmp_idx))  # NOTE: reserve 0 for dummy
+    #     msg_enemy = (comm_obs[valid_idx, 3] // 2**4) % 4
+    #     msg_npc = (comm_obs[valid_idx, 3] // 2**2) % 4
+
+    #     # channel 0: num team mates
+    #     self._tmp_comm_map[tmp_idx, 0, row_indices, col_indices] = 1
+    #     # channel 1-4: target, health, enemy, npc
+    #     self._tmp_comm_map[tmp_idx, 1, row_indices, col_indices] = msg_target
+    #     self._tmp_comm_map[tmp_idx, 2, row_indices, col_indices] = msg_health
+    #     self._tmp_comm_map[tmp_idx, 3, row_indices, col_indices] = msg_enemy
+    #     self._tmp_comm_map[tmp_idx, 4, row_indices, col_indices] = msg_npc
+
+    #     # merge the comm obs from all agents
+    #     self._comm_map[0, :] = np.sum(self._tmp_comm_map[valid_idx, 0], axis=0)
+    #     self._comm_map[1, :] = np.max(self._tmp_comm_map[valid_idx, 1], axis=0)
+    #     self._comm_map[2, :] = np.min(self._tmp_comm_map[valid_idx, 2], axis=0)
+    #     self._comm_map[3, :] = np.max(self._tmp_comm_map[valid_idx, 3], axis=0)
+    #     self._comm_map[4, :] = np.max(self._tmp_comm_map[valid_idx, 4], axis=0)
+    #     return self._comm_map
 
     def _process_attack_mask(self, obs):
         mask = obs["ActionTargets"]["Attack"]["Target"]
@@ -289,12 +311,8 @@ class Postprocessor(MiniGamePostprocessor):
         if self.agent_id not in self.env.realm.players:
             return 0
         agent = self.env.realm.players[self.agent_id]
-        my_health = (agent.resources.health.val // 34) + 1  # 1 - 3
-        num_enemy = np.sum(np.isin(self._entity_map, [ENEMY_REPR, DESTROY_TARGET_REPR]))
-        peri_enemy = min((num_enemy+3)//4, 3)  # 0: no enemy, 1: 1-4, 2: 5-8, 3: 9+
-        num_npc = np.sum(np.isin(self._entity_map, [PASSIVE_REPR, NEUTRAL_REPR, HOSTILE_REPR]))
-        peri_npc = min((num_npc+3)//4, 3)  # 0: no npc, 1: 1-4, 2: 5-8, 3: 9+
-        return self._can_see_target << 5 | int(peri_enemy) << 4 | int(peri_npc) << 2 | int(my_health)
+        return pph.compute_comm_action(self._can_see_target, agent.resources.health.val,
+                                       self._entity_obs, EntityAttr, self.const_dict)
 
     def reward_done_info(self, reward, done, info):
         """Called on reward, done, and info before they are returned from the environment"""

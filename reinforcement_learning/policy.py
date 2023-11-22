@@ -27,7 +27,9 @@ class Baseline(pufferlib.models.Policy):
     self.player_encoder = PlayerEncoder(input_size, hidden_size)
     task_size = env.structured_observation_space["Task"].shape[0]
     self.task_encoder = TaskEncoder(input_size, hidden_size, task_size)
-    self.comm_encoder = CommCNN(input_size)
+    #self.comm_encoder = CommCNN(input_size)
+    self.comm_encoder = CommEmbedEncoder(input_size, self.config.MAP_SIZE,
+                                         self.config.COMMUNICATION_NUM_TOKENS)
 
     self.proj_fc = nn.Linear(proj_fc_multiplier * input_size, input_size)
     self.action_decoder = ActionDecoder(input_size, hidden_size)
@@ -41,7 +43,8 @@ class Baseline(pufferlib.models.Policy):
         env_outputs["Entity"], env_outputs["AgentId"][:, 0]
     )
     task = self.task_encoder(env_outputs["Task"])
-    comm = self.comm_encoder(env_outputs["Communication"])
+    #comm = self.comm_encoder(env_outputs["Communication"])
+    comm = self.comm_encoder(env_outputs["Communication"], env_outputs["AgentId"][:, 0])
     obs = torch.cat([tile, my_agent, task, comm], dim=-1)
     obs = self.proj_fc(obs)
 
@@ -115,44 +118,40 @@ class TileEncoder(nn.Module):
 #     comm_tensor = F.relu(self.comm_fc1(comm_tensor))
 #     return self.comm_fc2(comm_tensor)
 
-# class CommEncoder(nn.Module):
-#   def __init__(self, input_size, map_size, token_num,
-#                embed_dim=16, pos_down_sample=8, max_comm_obs=32):
-#     super().__init__()
-#     self.map_size = map_size
-#     self.pos_down_sample = pos_down_sample
-#     self.token_num = token_num
-#     self.max_comm_obs = max_comm_obs
-#     self.pos_embedding = nn.Embedding((map_size//self.pos_down_sample)**2, embed_dim)
-#     self.comm_embedding = nn.Embedding((token_num+1)*(map_size//self.pos_down_sample)**2, embed_dim)
-#     self.comm_fc = nn.Linear(embed_dim*(2*self.max_comm_obs+1), input_size)
+class CommEmbedEncoder(nn.Module):
+  def __init__(self, input_size, map_size, token_num,
+               embed_dim=16, pos_down_sample=8, comm_obs_len=32):
+    super().__init__()
+    self.map_size = map_size
+    self.pos_down_sample = pos_down_sample
+    self.token_num = token_num
+    self.pos_embedding = nn.Embedding((map_size//self.pos_down_sample)**2, embed_dim)
+    self.token_embedding = nn.Embedding(token_num+1, embed_dim)
+    self.comm_fc = nn.Linear(embed_dim*(2*comm_obs_len+1), input_size)
 
-#   def forward(self, comm_obs, my_id):
-#     # Input shape: (batch_size, 100, 4)
-#     comm_obs = comm_obs[:, :self.max_comm_obs].int()  # max 32 team mates
-#     agent_ids = comm_obs[:, :, 0]
-#     row_indices = comm_obs[:, :, 1] // self.pos_down_sample
-#     col_indices = comm_obs[:, :, 2] // self.pos_down_sample
-#     tokens = comm_obs[:, :, 3]
+  def forward(self, comm_obs, my_id):
+    # Input shape: (batch_size, 32, 4)
+    comm_obs = comm_obs.int()
+    agent_ids = comm_obs[:, :, 0]
+    row_indices = comm_obs[:, :, 1] // self.pos_down_sample
+    col_indices = comm_obs[:, :, 2] // self.pos_down_sample
+    tokens = comm_obs[:, :, 3]
 
-#     pos_idx = row_indices * (self.map_size//self.pos_down_sample) + col_indices
-#     pos_embeddings = self.pos_embedding(pos_idx)
+    pos_idx = row_indices * (self.map_size//self.pos_down_sample) + col_indices
+    pos_embeddings = self.pos_embedding(pos_idx)
+    token_embeddings = self.token_embedding(tokens)
 
-#     comm_idx = pos_idx * self.token_num + tokens
-#     token_embeddings = self.comm_embedding(comm_idx)
+    # Pull out rows corresponding to the agent
+    mask = (agent_ids == my_id.unsqueeze(1)) & (agent_ids != 0)
+    mask = mask.int()
+    row_indices = torch.where(
+        mask.any(dim=1), mask.argmax(dim=1), torch.zeros_like(mask.sum(dim=1)))
+    my_pos_embeddings = pos_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
 
-#     # Pull out rows corresponding to the agent
-#     mask = (agent_ids == my_id.unsqueeze(1)) & (agent_ids != 0)
-#     mask = mask.int()
-#     row_indices = torch.where(
-#         mask.any(dim=1), mask.argmax(dim=1), torch.zeros_like(mask.sum(dim=1)))
-#     my_pos_embeddings = pos_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
-#     #my_token_embeddings = token_embeddings[torch.arange(comm_obs.shape[0]), row_indices]
-
-#     embeddings = torch.cat((pos_embeddings, token_embeddings), dim=2)
-#     embeddings = embeddings.view(embeddings.size(0), -1)
-#     embeddings = torch.cat([my_pos_embeddings, embeddings], dim=1)
-#     return self.comm_fc(embeddings)
+    embeddings = torch.cat((pos_embeddings, token_embeddings), dim=2)
+    embeddings = embeddings.view(embeddings.size(0), -1)
+    embeddings = torch.cat([my_pos_embeddings, embeddings], dim=1)
+    return self.comm_fc(embeddings)
 
 class CommCNN(nn.Module):
   def __init__(self, input_size):
