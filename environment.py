@@ -119,6 +119,9 @@ class Postprocessor(MiniGamePostprocessor):
 
         self._reset_reward_vars()
 
+        self._task_obs = np.zeros(len(self.config.system_states)+self.config.TASK_EMBED_DIM,
+                                  dtype=np.float16)
+
         # placeholder for the tile-based maps
         self._entity_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._comm_map = np.zeros((2, self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
@@ -145,6 +148,8 @@ class Postprocessor(MiniGamePostprocessor):
     def reset(self, observation):
         super().reset(observation)
         self._reset_reward_vars()
+        self._task_obs[:len(self.config.system_states)] = self.config.system_states
+        self._task_obs[len(self.config.system_states):] = observation["Task"]
 
         # Set the task-related vars
         self._rally_target = None
@@ -182,6 +187,9 @@ class Postprocessor(MiniGamePostprocessor):
     def observation_space(self):
         """If you modify the shape of features, you need to specify the new obs space"""
         obs_space = super().observation_space
+        # Add system states to the task obs
+        obs_space["Task"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.float16,
+                                           shape=self._task_obs.shape)
         # Add informative tile maps: dist, obstacle, food, water, entity, rally dist & point
         add_dim = 7
         tile_dim = obs_space["Tile"].shape[1] + add_dim
@@ -198,36 +206,17 @@ class Postprocessor(MiniGamePostprocessor):
         Use this to define custom featurizers. Changing the space itself requires you to
         define the observation space again (i.e. Gym.spaces.Dict(gym.spaces....))
         """
+        self._entity_obs = obs["Entity"]  # save for later use
+        obs["Task"] = self._task_obs  # system states added to task embedding
+
         # Parse and augment tile obs
         # see tests/test_update_entity_map.py for the reference python implementation
-        self._entity_obs = obs["Entity"]  # save for later use
         pph.update_entity_map(self._entity_map, obs["Entity"], EntityAttr, self.const_dict)
-        #self._update_entity_map(obs)
         obs["Tile"] = self._augment_tile_obs(obs)
-        #obs["Communication"] = self._get_comm_obs(obs)
 
         # Do NOT attack teammates
         obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
         return obs
-
-    # NOTE: using the cython implementation
-    # def _update_entity_map(self, obs):
-    #     # Process entity obs
-    #     self._entity_map[:] = 0
-    #     entity_idx = obs["Entity"][:,EntityAttr["id"]] != 0
-    #     for entity in obs["Entity"][entity_idx]:
-    #         ent_pos = (entity[EntityAttr["row"]], entity[EntityAttr["col"]])
-    #         if entity[EntityAttr["id"]] < 0:
-    #             npc_type = entity[EntityAttr["npc_type"]]
-    #             self._entity_map[ent_pos] = max(npc_type, self._entity_map[ent_pos])
-    #         if entity[EntityAttr["id"]] > 0 and entity[EntityAttr["npc_type"]] == 0:
-    #             self._entity_map[ent_pos] = max(ENEMY_REPR, self._entity_map[ent_pos])
-    #             if entity[EntityAttr["id"]] in self._target_destroy:
-    #                 self._entity_map[ent_pos] = max(DESTROY_TARGET_REPR, self._entity_map[ent_pos])
-    #             if entity[EntityAttr["id"]] in self._my_task.assignee:
-    #                 self._entity_map[ent_pos] = max(TEAMMATE_REPR, self._entity_map[ent_pos])
-    #             if entity[EntityAttr["id"]] in self._target_protect:
-    #                 self._entity_map[ent_pos] = max(PROTECT_TARGET_REPR, self._entity_map[ent_pos])
 
     def _augment_tile_obs(self, obs):
         # assume updated entity map
@@ -251,39 +240,6 @@ class Postprocessor(MiniGamePostprocessor):
         maps = [obs["Tile"], dist[:,None], obstacle[:,None], food[:,None], water[:,None],
                 entity[:,None], rally_dist[:,None], rally_point[:,None]]
         return np.concatenate(maps, axis=1).astype(np.int16)
-
-    # def _get_comm_obs(self, obs):
-    #     if not self.env.config.COMMUNICATION_SYSTEM_ENABLED:
-    #         return self._dummy_comm_map
-    #     comm_obs = obs["Communication"]
-    #     valid_idx = comm_obs[:, 0] > 0
-    #     if not np.any(valid_idx):
-    #         return self._dummy_comm_map
-
-    #     self._tmp_comm_map[:] = 0
-    #     tmp_idx = self._tmp_idx[valid_idx]
-    #     row_indices = comm_obs[valid_idx, 1] // self._comm_down_sample
-    #     col_indices = comm_obs[valid_idx, 2] // self._comm_down_sample
-    #     msg_target = comm_obs[valid_idx, 3] // 2**5
-    #     msg_health = np.maximum(comm_obs[valid_idx, 3] % 4, np.ones_like(tmp_idx))  # NOTE: reserve 0 for dummy
-    #     msg_enemy = (comm_obs[valid_idx, 3] // 2**4) % 4
-    #     msg_npc = (comm_obs[valid_idx, 3] // 2**2) % 4
-
-    #     # channel 0: num team mates
-    #     self._tmp_comm_map[tmp_idx, 0, row_indices, col_indices] = 1
-    #     # channel 1-4: target, health, enemy, npc
-    #     self._tmp_comm_map[tmp_idx, 1, row_indices, col_indices] = msg_target
-    #     self._tmp_comm_map[tmp_idx, 2, row_indices, col_indices] = msg_health
-    #     self._tmp_comm_map[tmp_idx, 3, row_indices, col_indices] = msg_enemy
-    #     self._tmp_comm_map[tmp_idx, 4, row_indices, col_indices] = msg_npc
-
-    #     # merge the comm obs from all agents
-    #     self._comm_map[0, :] = np.sum(self._tmp_comm_map[valid_idx, 0], axis=0)
-    #     self._comm_map[1, :] = np.max(self._tmp_comm_map[valid_idx, 1], axis=0)
-    #     self._comm_map[2, :] = np.min(self._tmp_comm_map[valid_idx, 2], axis=0)
-    #     self._comm_map[3, :] = np.max(self._tmp_comm_map[valid_idx, 3], axis=0)
-    #     self._comm_map[4, :] = np.max(self._tmp_comm_map[valid_idx, 4], axis=0)
-    #     return self._comm_map
 
     def _process_attack_mask(self, obs):
         mask = obs["ActionTargets"]["Attack"]["Target"]
