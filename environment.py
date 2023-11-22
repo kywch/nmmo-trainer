@@ -334,7 +334,8 @@ class Postprocessor(MiniGamePostprocessor):
             # Run away from death fog
             reward += self.runaway_fog_weight if 1 < self._curr_death_fog < self._prev_death_fog else 0
 
-            if self.env.config.COMBAT_SYSTEM_ENABLED:
+            if self.env.config.COMBAT_SYSTEM_ENABLED and \
+               not isinstance(self.env.game, tg.CommTogether):  # Use different reward scheme for CommTogether
                 # Local superiority bonus
                 if self._local_superiority > 0:
                     reward += self.local_superiority_weight * self._local_superiority
@@ -348,26 +349,23 @@ class Postprocessor(MiniGamePostprocessor):
                 #     reward += self.superior_fire_weight*self._team_fire_utilization
 
                 # Score kill
-                if isinstance(self.env.game, tg.CommTogether):
-                  # give much less kill bonus because players can be resurrected
-                  reward += self.superior_fire_weight * self._player_kill
-                else:
-                  reward += self.kill_bonus_weight * self._player_kill
+                reward += self.kill_bonus_weight * self._player_kill
 
                 # Penalize dying futilely
                 if done and (self._local_superiority < 0 or self._vof_superiority < 0):
                     reward = -1
+
+            # Use only task progress for Comm Together
+            if isinstance(self.env.game, tg.CommTogether) and self._new_max_progress:
+                # Reward from this task seems too small to encourage learning
+                # Provide extra reward when the agents beat the prev max progress
+                reward += self.task_progress_weight
 
             if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
                 reward += self._eat_progress_bonus()
 
                 if agent.resources.health_restore > 5:  # health restored when water, food >= 50
                     reward += self.heal_bonus_weight
-
-            if isinstance(self.env.game, tg.CommTogether) and self._new_max_progress:
-                # Reward from this task seems too small to encourage learning
-                # Provide extra reward when the agents beat the prev max progress
-                reward += self.task_progress_weight
 
             if self.env.realm.map.seize_targets and self._seize_tile > 0:
                 # _seize_tile > 0 if the agent have just seized the target
