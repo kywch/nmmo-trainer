@@ -119,7 +119,8 @@ class Postprocessor(MiniGamePostprocessor):
 
         self._reset_reward_vars()
 
-        self._task_obs = np.zeros(len(self.config.system_states)+self.config.TASK_EMBED_DIM,
+        # team/agent, system states, task embedding
+        self._task_obs = np.zeros(1+len(self.config.system_states)+self.config.TASK_EMBED_DIM,
                                   dtype=np.float16)
 
         # placeholder for the tile-based maps
@@ -148,8 +149,9 @@ class Postprocessor(MiniGamePostprocessor):
     def reset(self, observation):
         super().reset(observation)
         self._reset_reward_vars()
-        self._task_obs[:len(self.config.system_states)] = self.config.system_states
-        self._task_obs[len(self.config.system_states):] = observation["Task"]
+        self._task_obs[0] = float(self._my_task.reward_to == "team")
+        self._task_obs[1:1+len(self.config.system_states)] = self.config.system_states
+        self._task_obs[1+len(self.config.system_states):] = observation["Task"]
 
         # Set the task-related vars
         self._rally_target = None
