@@ -1,5 +1,6 @@
 from argparse import Namespace
 from collections import Counter
+from copy import copy
 
 import math
 import gym.spaces
@@ -209,16 +210,18 @@ class Postprocessor(MiniGamePostprocessor):
         define the observation space again (i.e. Gym.spaces.Dict(gym.spaces....))
         """
         self._entity_obs = obs["Entity"]  # save for later use
-        obs["Task"] = self._task_obs  # system states added to task embedding
+        # create a shallow copy, since the original obs is immutable
+        mod_obs = {k: v for k, v in obs.items()}
+        mod_obs["Task"] = self._task_obs  # system states added to task embedding
 
         # Parse and augment tile obs
         # see tests/test_update_entity_map.py for the reference python implementation
         pph.update_entity_map(self._entity_map, obs["Entity"], EntityAttr, self.const_dict)
-        obs["Tile"] = self._augment_tile_obs(obs)
+        mod_obs["Tile"] = self._augment_tile_obs(obs)
 
         # Do NOT attack teammates
-        obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
-        return obs
+        mod_obs["ActionTargets"]["Attack"]["Target"] = self._process_attack_mask(obs)
+        return mod_obs
 
     def _augment_tile_obs(self, obs):
         # assume updated entity map
@@ -244,7 +247,7 @@ class Postprocessor(MiniGamePostprocessor):
         return np.concatenate(maps, axis=1).astype(np.int16)
 
     def _process_attack_mask(self, obs):
-        mask = obs["ActionTargets"]["Attack"]["Target"]
+        mask = obs["ActionTargets"]["Attack"]["Target"].copy()
         if sum(mask) == 1 and mask[-1] == 1:  # no valid target
             return mask
         target_idx = np.where(mask[:-1] == 1)[0]
