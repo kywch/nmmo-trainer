@@ -86,7 +86,7 @@ for event_code in ["EAT_FOOD", "DRINK_WATER"]:
         )
 
 curriculum.append(
-    TaskSpec(eval_fn=mg.ProgressTowardCenter,
+    TaskSpec(eval_fn=ProgressTowardCenter,
              eval_fn_kwargs={},
              sampling_weight=3,
              reward_to="agent",

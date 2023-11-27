@@ -11,6 +11,7 @@ import pufferlib.emulation
 
 import nmmo
 import nmmo.core.config as cfg
+from nmmo.core import game_api
 from nmmo.lib import material, utils
 from nmmo.lib.event_log import EventCode
 from nmmo.entity.entity import EntityState, CommAttr
@@ -58,16 +59,19 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC, cfg.Com
                                 (tg.EasyKingoftheQuad, 1), (tg.Sandwich, 1), (tg.CommTogether, 1),
                                 (tg.RadioRaid, 1)])
 
-def make_env_creator(args: Namespace):
+def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
     def env_creator():
         """Create an environment."""
-        env = nmmo.Env(Config(args))
+        config = Config(args)
+        if game_cls and isinstance(game_cls, game_api.Game):
+            config.set("GAME_PACKS", [(game_cls, 1)])
+        env = nmmo.Env(config)
         env = pufferlib.emulation.PettingZooPufferEnv(env,
             postprocessor_cls=Postprocessor,
             postprocessor_kwargs={
                 "eval_mode": args.eval_mode,
                 "runaway_fog_weight": args.runaway_fog_weight,
-                "local_superiority_weight": args.local_superiority_weight,
+                "vof_grouping_weight": args.vof_grouping_weight,
                 "local_area_dist": args.local_area_dist,
                 "superior_fire_weight": args.superior_fire_weight,
                 "kill_bonus_weight": args.kill_bonus_weight,
@@ -88,7 +92,7 @@ class Postprocessor(MiniGamePostprocessor):
             self, env, is_multiagent, agent_id,
             eval_mode=False,
             runaway_fog_weight=0,
-            local_superiority_weight=0,
+            vof_grouping_weight=0,
             local_area_dist=0,
             superior_fire_weight=0,
             kill_bonus_weight=0,
@@ -105,12 +109,12 @@ class Postprocessor(MiniGamePostprocessor):
 
         self.runaway_fog_weight = runaway_fog_weight
 
-        self.local_superiority_weight = local_superiority_weight
         self.local_area_dist = local_area_dist
         self.superior_fire_weight = superior_fire_weight
         self.kill_bonus_weight = kill_bonus_weight
         self.key_achievement_weight = key_achievement_weight
         self.task_progress_weight = task_progress_weight
+        self.vof_grouping_weight = vof_grouping_weight
 
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
@@ -295,19 +299,36 @@ class Postprocessor(MiniGamePostprocessor):
             # Run away from death fog
             reward += self.runaway_fog_weight if 1 < self._curr_death_fog < self._prev_death_fog else 0
 
+            # Reward task progress, i.e., setting the new max progress
+            if self._new_max_progress:
+                # Reward from this task seems too small to encourage learning
+                # Provide extra reward when the agents beat the prev max progress
+                reward += self.task_progress_weight
+
+            # Extra reward for eating and drinking for survival
+            if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
+                reward += self._eat_progress_bonus()
+
+                if agent.resources.health_restore > 5:  # health restored when water, food >= 50
+                    reward += self.heal_bonus_weight
+
+            # Reward key achievements toward team winning
+            if self.env.realm.map.seize_targets and self._seize_tile > 0:
+                # _seize_tile > 0 if the agent have just seized the target
+                reward += self.key_achievement_weight
+
+            # Careful with the combat bonus, by trying not to give too much
             if self.env.config.COMBAT_SYSTEM_ENABLED and \
                not isinstance(self.env.game, tg.CommTogether):  # Use different reward scheme for CommTogether
                 # Local superiority bonus
-                if self._local_superiority > 0:
-                    reward += self.local_superiority_weight * self._local_superiority
+                # if self._local_superiority > 0:
+                #     reward += self.local_superiority_weight * self._local_superiority
+
                 # Get reward for any hit, and bonus for concentrated fire
                 reward += self.superior_fire_weight * self._concentrate_fire
                 # Fire during superiority -- try to make agents aggressive when having number advantage
                 if (self._local_superiority > 0 or self._vof_superiority > 0) and self._concentrate_fire > 0:
                     reward += self.superior_fire_weight
-                # Team bonus for higher fire utilization, when superior
-                # if self._vof_superiority > 0 and self._team_fire_utilization > 0:
-                #     reward += self.superior_fire_weight*self._team_fire_utilization
 
                 # Score kill
                 reward += self.kill_bonus_weight * self._player_kill
@@ -316,21 +337,10 @@ class Postprocessor(MiniGamePostprocessor):
                 if done and (self._local_superiority < 0 or self._vof_superiority < 0):
                     reward = -1
 
-            # Use only task progress for Comm Together
-            if isinstance(self.env.game, tg.CommTogether) and self._new_max_progress:
-                # Reward from this task seems too small to encourage learning
-                # Provide extra reward when the agents beat the prev max progress
-                reward += self.task_progress_weight
-
-            if self.env.config.RESOURCE_SYSTEM_ENABLED and self.get_resource_weight:
-                reward += self._eat_progress_bonus()
-
-                if agent.resources.health_restore > 5:  # health restored when water, food >= 50
-                    reward += self.heal_bonus_weight
-
-            if self.env.realm.map.seize_targets and self._seize_tile > 0:
-                # _seize_tile > 0 if the agent have just seized the target
-                reward += self.key_achievement_weight
+            if isinstance(self.env.game, tg.CommTogether):
+                # Get reward for hanging around with teammates
+                if self._vof_grouping > 0:
+                    reward += self.vof_grouping_weight * min(self._vof_grouping, 3)
 
             if self._my_task.reward_to == "agent":
                 if len(self._prev_moves) > 5:
@@ -375,8 +385,8 @@ class Postprocessor(MiniGamePostprocessor):
 
         self._local_superiority = 0
         self._vof_superiority = 0
+        self._vof_grouping = 0
         self._concentrate_fire = 0
-        self._team_fire_utilization = 0
         self._player_kill = 0
         self._target_protect = []
         self._target_destroy = []
@@ -433,8 +443,8 @@ class Postprocessor(MiniGamePostprocessor):
         self._local_superiority = np.sum(local_map == TEAMMATE_REPR) - num_enemy if num_enemy > 0 else 0
 
         # Visual field superioirty, but count only when enemies are nearby
-        self._vof_superiority = np.sum(self._entity_map == TEAMMATE_REPR) - np.sum(self._entity_map == ENEMY_REPR)\
-                                if num_enemy > 0 else 0
+        self._vof_grouping = np.sum(self._entity_map == TEAMMATE_REPR)
+        self._vof_superiority = self._vof_grouping - np.sum(self._entity_map == ENEMY_REPR) if num_enemy > 0 else 0
 
         # Concentrate fire, get from the agent's log
         self._concentrate_fire = 0

@@ -153,7 +153,9 @@ class Sandwich(mg.Sandwich):
 
     def _set_config(self):
         # randomly select whether to use the terrain map or grass map
-        self._grass_map = self._next_grass_map or self._np_random.choice([True, False], p=[0.2, 0.8])
+        self._grass_map = self._next_grass_map
+        if self._grass_map is None:
+            self._grass_map = self._np_random.choice([True, False], p=[0.2, 0.8])
         super()._set_config()
 
     def _define_tasks(self):
@@ -180,7 +182,9 @@ class CommTogether(mg.CommTogether):
 
     def _set_config(self):
         # randomly select whether to use the terrain map or grass map
-        self._grass_map = self._next_grass_map or self._np_random.choice([True, False])
+        self._grass_map = self._next_grass_map
+        if self._grass_map is None:
+            self._grass_map = self._np_random.choice([True, False])
         self._spawn_immunity = self._next_spawn_immunity or self._spawn_immunity
         super()._set_config()
 
@@ -207,7 +211,9 @@ class RadioRaid(mg.RadioRaid):
 
     def _set_config(self):
         # randomly select whether to use the terrain map or grass map
-        self._grass_map = self._next_grass_map or self._np_random.choice([True, False])
+        self._grass_map = self._next_grass_map
+        if self._grass_map is None:
+            self._grass_map = self._np_random.choice([True, False])
         self._goal_num_npc = self._next_goal_num_npc or self._goal_num_npc
         super()._set_config()
 

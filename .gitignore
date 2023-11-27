@@ -6,6 +6,8 @@ checkpoints
 wandb
 maps
 pool
+old*
+r*pt/
 
 # checkpoints, etc
 *.tar.gz
@@ -21,8 +23,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
+# C extensions, cython
 *.so
+*.c
 
 # Distribution / packaging
 .Python
