@@ -71,10 +71,11 @@ def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
             postprocessor_kwargs={
                 "eval_mode": args.eval_mode,
                 "runaway_fog_weight": args.runaway_fog_weight,
-                "vof_grouping_weight": args.vof_grouping_weight,
+                "local_superiority_weight": args.local_superiority_weight,
                 "local_area_dist": args.local_area_dist,
                 "superior_fire_weight": args.superior_fire_weight,
                 "kill_bonus_weight": args.kill_bonus_weight,
+                "vof_grouping_weight": args.vof_grouping_weight,
                 "key_achievement_weight": args.key_achievement_weight,
                 "task_progress_weight": args.task_progress_weight,
                 "survival_mode_criteria": args.survival_mode_criteria,
@@ -92,10 +93,11 @@ class Postprocessor(MiniGamePostprocessor):
             self, env, is_multiagent, agent_id,
             eval_mode=False,
             runaway_fog_weight=0,
-            vof_grouping_weight=0,
+            local_superiority_weight=0,
             local_area_dist=0,
             superior_fire_weight=0,
             kill_bonus_weight=0,
+            vof_grouping_weight=0,
             key_achievement_weight=0,
             task_progress_weight=0,
             survival_mode_criteria=35,
@@ -109,6 +111,7 @@ class Postprocessor(MiniGamePostprocessor):
 
         self.runaway_fog_weight = runaway_fog_weight
 
+        self.local_superiority_weight = local_superiority_weight
         self.local_area_dist = local_area_dist
         self.superior_fire_weight = superior_fire_weight
         self.kill_bonus_weight = kill_bonus_weight
@@ -128,12 +131,14 @@ class Postprocessor(MiniGamePostprocessor):
         self._task_obs = np.zeros(1+len(self.config.system_states)+self.config.TASK_EMBED_DIM,
                                   dtype=np.float16)
 
-        # placeholder for the tile-based maps
+        # placeholders
+        self._entity_obs = None  # placeholder
         self._entity_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
-        self._comm_map = np.zeros((2, self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._rally_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
         self._rally_target = None
         self._can_see_target = False
+        self._vof_num_team = None
+        self._vof_num_enemy = None
 
         # dist map should not change from episode to episode
         self._dist_map = np.zeros((self.config.MAP_SIZE, self.config.MAP_SIZE), dtype=np.int16)
@@ -141,15 +146,6 @@ class Postprocessor(MiniGamePostprocessor):
         for i in range(center):
             l, r = i, self.config.MAP_SIZE - i
             self._dist_map[l:r, l:r] = center - i - 1
-
-        # placeholder for the comm-based maps
-        self._entity_obs = None  # placeholder
-        self._comm_down_sample = 8  # 160 -> 20
-        self._comm_channels = 5  # num_team_member, status, npc, enemy, target
-        self._comm_map_dim = (self._comm_channels,
-                              self.config.MAP_SIZE//self._comm_down_sample,
-                              self.config.MAP_SIZE//self._comm_down_sample)
-        self._comm_map = np.zeros(self._comm_map_dim, dtype=np.int16)
 
     def reset(self, observation):
         super().reset(observation)
@@ -172,13 +168,11 @@ class Postprocessor(MiniGamePostprocessor):
                     self._target_destroy = [target] if isinstance(target, int) else target
             if "SeizeCenter" in self._my_task.name or "ProgressTowardCenter" in self._my_task.name:
                 self._rally_target = self.env.realm.map.center_coord
-                self._rally_map = np.copy(self._dist_map)
+                self._rally_map[self._rally_target] = 1
             if "SeizeQuadCenter" in self._my_task.name:
                 target = self._my_task.kwargs["quadrant"]
                 self._rally_target = self.env.realm.map.quad_centers[target]
-                for r in range(self.config.MAP_SIZE):
-                    for c in range(self.config.MAP_SIZE):
-                        self._rally_map[r,c] = utils.linf_single((r,c), self._rally_target)
+                self._rally_map[self._rally_target] = 1
 
         self.const_dict = {
             "my_team": set(self._my_task.assignee),
@@ -197,14 +191,11 @@ class Postprocessor(MiniGamePostprocessor):
         # Add system states to the task obs
         obs_space["Task"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.float16,
                                            shape=self._task_obs.shape)
-        # Add informative tile maps: dist, obstacle, food, water, entity, rally dist & point
-        add_dim = 7
+        # Add informative tile maps: dist, obstacle, food, water, entity, rally point
+        add_dim = 6
         tile_dim = obs_space["Tile"].shape[1] + add_dim
         obs_space["Tile"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
                                            shape=(self.config.MAP_N_OBS, tile_dim))
-        # Make down-sampled 2d map from the comm obs
-        # obs_space["Communication"] = gym.spaces.Box(low=-2**15, high=2**15-1, dtype=np.int16,
-        #                                             shape=self._comm_map_dim)
         return obs_space
 
     def observation(self, obs):
@@ -220,7 +211,8 @@ class Postprocessor(MiniGamePostprocessor):
 
         # Parse and augment tile obs
         # see tests/test_update_entity_map.py for the reference python implementation
-        pph.update_entity_map(self._entity_map, obs["Entity"], EntityAttr, self.const_dict)
+        self._vof_num_team, self._vof_num_enemy = \
+          pph.update_entity_map(self._entity_map, obs["Entity"], EntityAttr, self.const_dict)
         mod_obs["Tile"] = self._augment_tile_obs(obs)
 
         # Do NOT attack teammates
@@ -229,38 +221,38 @@ class Postprocessor(MiniGamePostprocessor):
 
     def _augment_tile_obs(self, obs):
         # assume updated entity map
-        entity = self._entity_map[obs["Tile"][:,0],obs["Tile"][:,1]]
-        dist = self._dist_map[obs["Tile"][:,0],obs["Tile"][:,1]]
-        obstacle = np.isin(obs["Tile"][:,2], [material.Stone.index, material.Void.index])
+        entity = self._entity_map[obs["Tile"][:,0], obs["Tile"][:,1]]
+        dist = self._dist_map[obs["Tile"][:,0], obs["Tile"][:,1]]
+        obstacle = (obs["Tile"][:,2] == material.Stone.index) | \
+                   (obs["Tile"][:,2] == material.Void.index)
         food = obs["Tile"][:,2] == material.Foilage.index
         water = obs["Tile"][:,2] == material.Water.index
 
         # Rally point-related obs
-        rally_dist = self._rally_map[obs["Tile"][:,0],obs["Tile"][:,1]]  # all zero if no rally point
-        if self._rally_target:
-            rally_point = self._rally_map[obs["Tile"][:,0],obs["Tile"][:,1]] == 0
-        else:
-            rally_point = np.zeros_like(rally_dist)
+        rally_point = self._rally_map[obs["Tile"][:,0], obs["Tile"][:,1]]  # all zero if no rally point
 
         # To communicate if the agent can see the target
-        self._can_see_target = np.sum(entity == DESTROY_TARGET_REPR) > 0 or \
-                               (self._rally_target is not None and np.sum(rally_point == 0) > 0)
+        self._can_see_target = (entity == DESTROY_TARGET_REPR).sum() > 0 or \
+                               (self._rally_target is not None and rally_point.sum() > 0)
 
         maps = [obs["Tile"], dist[:,None], obstacle[:,None], food[:,None], water[:,None],
-                entity[:,None], rally_dist[:,None], rally_point[:,None]]
+                entity[:,None], rally_point[:,None]]
         return np.concatenate(maps, axis=1).astype(np.int16)
 
     def _process_attack_mask(self, obs):
-        mask = obs["ActionTargets"]["Attack"]["Target"].copy()
-        if sum(mask) == 1 and mask[-1] == 1:  # no valid target
-            return mask
-        target_idx = np.where(mask[:-1] == 1)[0]
-        teammate = np.in1d(obs["Entity"][target_idx,EntityAttr["id"]], self._my_task.assignee)
+        whole_mask = obs["ActionTargets"]["Attack"]["Target"]
+        entity_mask = whole_mask[:-1]
+        if entity_mask.sum() == 0 and whole_mask[-1] == 1:  # no valid target
+            return whole_mask
+        if len(self._my_task.assignee) == 1:  # no team
+            return whole_mask
+        # the order of entities in obs["Entity"] is the same as in the mask
+        teammate = np.in1d(obs["Entity"][:, EntityAttr["id"]], self._my_task.assignee)
         # Do NOT attack teammates
-        mask[target_idx[teammate]] = 0
-        if sum(mask) == 0:
-            mask[-1] = 1  # if no valid target, make sure to turn on no-op
-        return mask
+        entity_mask[teammate] = 0
+        if entity_mask.sum() == 0:
+            whole_mask[-1] = 1  # if no valid target, make sure to turn on no-op
+        return whole_mask
 
     def action(self, action):
         """Called before actions are passed from the model to the environment"""
@@ -320,15 +312,15 @@ class Postprocessor(MiniGamePostprocessor):
             # Careful with the combat bonus, by trying not to give too much
             if self.env.config.COMBAT_SYSTEM_ENABLED and \
                not isinstance(self.env.game, tg.CommTogether):  # Use different reward scheme for CommTogether
-                # Local superiority bonus
-                # if self._local_superiority > 0:
-                #     reward += self.local_superiority_weight * self._local_superiority
+                # Local superiority bonus -- NOTE: make it small so that agents sit tight together and do nothing
+                if self._local_superiority > 0:
+                    reward += self.local_superiority_weight * min(self._local_superiority, 3)
 
-                # Get reward for any hit, and bonus for concentrated fire
+                # Get reward for any attack, and bonus for concentrated fire
                 reward += self.superior_fire_weight * self._concentrate_fire
                 # Fire during superiority -- try to make agents aggressive when having number advantage
                 if (self._local_superiority > 0 or self._vof_superiority > 0) and self._concentrate_fire > 0:
-                    reward += self.superior_fire_weight
+                    reward += self.superior_fire_weight * self._concentrate_fire
 
                 # Score kill
                 reward += self.kill_bonus_weight * self._player_kill
@@ -342,10 +334,11 @@ class Postprocessor(MiniGamePostprocessor):
                 if self._vof_grouping > 0:
                     reward += self.vof_grouping_weight * min(self._vof_grouping, 3)
 
-            if self._my_task.reward_to == "agent":
-                if len(self._prev_moves) > 5:
-                  move_entropy = calculate_entropy(self._prev_moves[-8:])  # of last 8 moves
-                  reward += self.meander_bonus_weight * (move_entropy - 1)
+            # NOTE: this may be why agents are not going straint to the goal in the center race?
+            # if self._my_task.reward_to == "agent":
+            #     if len(self._prev_moves) > 5:
+            #       move_entropy = calculate_entropy(self._prev_moves[-8:])  # of last 8 moves
+            #       reward += self.meander_bonus_weight * (move_entropy - 1)
 
         return reward, done, info
 
@@ -384,6 +377,8 @@ class Postprocessor(MiniGamePostprocessor):
         self._seize_tile = 0
 
         self._local_superiority = 0
+        self._vof_num_team = None
+        self._vof_num_enemy = None
         self._vof_superiority = 0
         self._vof_grouping = 0
         self._concentrate_fire = 0
@@ -393,7 +388,7 @@ class Postprocessor(MiniGamePostprocessor):
 
         # Eat & progress bonuses: eat & progress, drink & progress
         # (reward when agents eat/drink the farthest so far)
-        self._prev_basic_events = np.zeros(2, dtype=np.int16)  # EAT_FOOD, DRINK_WATER
+        self._prev_basic_events = [0, 0]  # EAT_FOOD, DRINK_WATER
         self._prev_food_level = self._curr_food_level = 100
         self._prev_water_level = self._curr_water_level = 100
         self._prev_health_level = self._curr_health_level = 100
@@ -418,7 +413,7 @@ class Postprocessor(MiniGamePostprocessor):
         if self.env.realm.map.seize_targets:
             my_sieze = (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
                        (tick_log[:,attr_to_col["event"]] == EventCode.SEIZE_TILE)
-            self._seize_tile = sum(my_sieze)
+            self._seize_tile = my_sieze.sum() > 0
 
         # Task progress
         if self._my_task.progress > self._max_task_progress:
@@ -438,43 +433,42 @@ class Postprocessor(MiniGamePostprocessor):
                                      agent.pos[1]-self.local_area_dist:agent.pos[1]+self.local_area_dist+1]
         # TODO: include all enemies and allies
         # how about their health too?
-        num_enemy = np.sum(local_map == ENEMY_REPR)
+        num_enemy = (local_map == ENEMY_REPR).sum()
         # TODO: add the distance-based bonus?
-        self._local_superiority = np.sum(local_map == TEAMMATE_REPR) - num_enemy if num_enemy > 0 else 0
+        self._local_superiority = (local_map == TEAMMATE_REPR).sum() - num_enemy if num_enemy > 0 else 0
 
         # Visual field superioirty, but count only when enemies are nearby
-        self._vof_grouping = np.sum(self._entity_map == TEAMMATE_REPR)
-        self._vof_superiority = self._vof_grouping - np.sum(self._entity_map == ENEMY_REPR) if num_enemy > 0 else 0
+        self._vof_grouping = self._vof_num_team
+        self._vof_superiority = self._vof_num_team - self._vof_num_enemy if num_enemy > 0 else 0
 
         # Concentrate fire, get from the agent's log
         self._concentrate_fire = 0
-        my_hit = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
-                 (tick_log[:,attr_to_col["ent_id"]] == self.agent_id)
-        if sum(my_hit) > 0:
-            my_target = tick_log[my_hit,attr_to_col["target_ent"]]
-            target_hits = tick_log[:,attr_to_col["target_ent"]] == my_target[0]
+        my_hit = (tick_log[:, attr_to_col["event"]] == EventCode.SCORE_HIT) & \
+                 (tick_log[:, attr_to_col["ent_id"]] == self.agent_id)
+        if my_hit.sum() > 0:
+            my_target = tick_log[my_hit, attr_to_col["target_ent"]]
+            target_hits = tick_log[:, attr_to_col["target_ent"]] == my_target[0]
             # reward the single hit as well
-            self._concentrate_fire = sum(target_hits)
+            self._concentrate_fire = target_hits.sum()
 
         # Team fire utilization
-        my_team = self._my_task.assignee
-        self._team_fire_utilization = 0
-        team_fire = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
-                    np.in1d(tick_log[:,attr_to_col["ent_id"]], my_team)
-        if len(my_team) > 1 and sum(team_fire) >= max(2,int(len(my_team)**.5)):
-            self._team_fire_utilization = float(sum(team_fire)) / len(my_team)
+        # my_team = self._my_task.assignee
+        # self._team_fire_utilization = 0
+        # team_fire = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
+        #             np.in1d(tick_log[:,attr_to_col["ent_id"]], my_team)
+        # if len(my_team) > 1 and team_fire.sum()) >= max(2,int(len(my_team)**.5)):
+        #     self._team_fire_utilization = float(team_fire.sum()) / len(my_team)
 
         # Being hit
-        got_hit = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
-                  (tick_log[:,attr_to_col["target_ent"]] == self.agent_id)
-        self._got_hit = sum(got_hit)
+        # got_hit = (tick_log[:,attr_to_col["event"]] == EventCode.SCORE_HIT) & \
+        #           (tick_log[:,attr_to_col["target_ent"]] == self.agent_id)
+        # self._got_hit = got_hit.sum()
 
         # Player kill, from the agent's log -- ONLY consider players, not npcs
         my_kill = (tick_log[:,attr_to_col["event"]] == EventCode.PLAYER_KILL) & \
                   (tick_log[:,attr_to_col["ent_id"]] == self.agent_id) & \
-                  (tick_log[:,attr_to_col["target_ent"]] > 0) & \
-                  ~np.in1d(tick_log[:,attr_to_col["target_ent"]], my_team)
-        self._player_kill = float(sum(my_kill) > 0)
+                  (tick_log[:,attr_to_col["target_ent"]] > 0)
+        self._player_kill = my_kill.sum() > 0
 
     def _update_resource_reward_vars(self, agent, tick_log, attr_to_col):
         if not self.env.config.RESOURCE_SYSTEM_ENABLED:
@@ -483,7 +477,7 @@ class Postprocessor(MiniGamePostprocessor):
         for idx, event_code in enumerate(RESOURCE_EVENTS):
             event_idx = (tick_log[:,attr_to_col["event"]] == event_code) & \
                         (tick_log[:,attr_to_col["ent_id"]] == self.agent_id)
-            self._prev_basic_events[idx] = int(sum(event_idx) > 0)
+            self._prev_basic_events[idx] = event_idx.sum() > 0
 
         # agent-based vars
         self._prev_food_level = self._curr_food_level

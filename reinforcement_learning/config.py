@@ -54,7 +54,7 @@ class Config:
 
     # Reward Args
     runaway_fog_weight = 0.01
-    #local_superiority_weight = 0.01
+    local_superiority_weight = 0.001
     local_area_dist = 5
     superior_fire_weight = 0.01
     kill_bonus_weight = 0.1

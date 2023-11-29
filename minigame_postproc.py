@@ -140,9 +140,9 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
                 info["stats"][game_name+"/inner_npc_num"] = self.env.game.inner_npc_num
                 info["stats"][game_name+"/spawned_npc"] = abs(self.env.realm.npcs.next_id+1)
 
-            if isinstance(self.env.game, tg.CommTogether):
-                info["stats"][game_name+"/num_player_resurrect"] = self.env.game.num_player_resurrect
-                info["stats"][game_name+"/spawn_immunity"] = self.env.game._spawn_immunity
+            # if isinstance(self.env.game, tg.CommTogether):
+            #     info["stats"][game_name+"/num_player_resurrect"] = self.env.game.num_player_resurrect
+            #     info["stats"][game_name+"/spawn_immunity"] = self.env.game._spawn_immunity
 
             if isinstance(self.env.game, tg.RadioRaid):
                 info["stats"][game_name+"/goal_num_npc"] = self.env.game.goal_num_npc

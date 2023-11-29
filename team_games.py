@@ -177,15 +177,15 @@ class CommTogether(mg.CommTogether):
     def set_grass_map(self, grass_map):
         self._next_grass_map = grass_map
 
-    def set_spawn_immunity(self, immunity):
-        self._next_spawn_immunity = immunity
+    # def set_spawn_immunity(self, immunity):
+    #     self._next_spawn_immunity = immunity
 
     def _set_config(self):
         # randomly select whether to use the terrain map or grass map
         self._grass_map = self._next_grass_map
         if self._grass_map is None:
             self._grass_map = self._np_random.choice([True, False])
-        self._spawn_immunity = self._next_spawn_immunity or self._spawn_immunity
+        # self._spawn_immunity = self._next_spawn_immunity or self._spawn_immunity
         super()._set_config()
 
     def _define_tasks(self):
