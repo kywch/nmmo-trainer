@@ -75,7 +75,7 @@ def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
                 "local_area_dist": args.local_area_dist,
                 "superior_fire_weight": args.superior_fire_weight,
                 "kill_bonus_weight": args.kill_bonus_weight,
-                "vof_grouping_weight": args.vof_grouping_weight,
+                "comm_grouping_weight": args.comm_grouping_weight,
                 "key_achievement_weight": args.key_achievement_weight,
                 "task_progress_weight": args.task_progress_weight,
                 "survival_mode_criteria": args.survival_mode_criteria,
@@ -97,7 +97,7 @@ class Postprocessor(MiniGamePostprocessor):
             local_area_dist=0,
             superior_fire_weight=0,
             kill_bonus_weight=0,
-            vof_grouping_weight=0,
+            comm_grouping_weight=0,
             key_achievement_weight=0,
             task_progress_weight=0,
             survival_mode_criteria=35,
@@ -117,7 +117,7 @@ class Postprocessor(MiniGamePostprocessor):
         self.kill_bonus_weight = kill_bonus_weight
         self.key_achievement_weight = key_achievement_weight
         self.task_progress_weight = task_progress_weight
-        self.vof_grouping_weight = vof_grouping_weight
+        self.comm_grouping_weight = comm_grouping_weight
 
         self.survival_mode_criteria = survival_mode_criteria
         self.get_resource_criteria = get_resource_criteria
@@ -332,7 +332,7 @@ class Postprocessor(MiniGamePostprocessor):
             if isinstance(self.env.game, tg.CommTogether):
                 # Get reward for hanging around with teammates
                 if self._vof_grouping > 0:
-                    reward += self.vof_grouping_weight * min(self._vof_grouping, 3)
+                    reward += self.comm_grouping_weight * min(self._local_grouping, 3)
 
             # NOTE: this may be why agents are not going straint to the goal in the center race?
             # if self._my_task.reward_to == "agent":
@@ -377,6 +377,7 @@ class Postprocessor(MiniGamePostprocessor):
         self._seize_tile = 0
 
         self._local_superiority = 0
+        self._local_grouping = 0
         self._vof_num_team = None
         self._vof_num_enemy = None
         self._vof_superiority = 0
@@ -433,13 +434,14 @@ class Postprocessor(MiniGamePostprocessor):
                                      agent.pos[1]-self.local_area_dist:agent.pos[1]+self.local_area_dist+1]
         # TODO: include all enemies and allies
         # how about their health too?
-        num_enemy = (local_map == ENEMY_REPR).sum()
+        local_enemy = (local_map == ENEMY_REPR).sum()
         # TODO: add the distance-based bonus?
-        self._local_superiority = (local_map == TEAMMATE_REPR).sum() - num_enemy if num_enemy > 0 else 0
+        self._local_grouping = (local_map == TEAMMATE_REPR).sum()
+        self._local_superiority = self._local_grouping - local_enemy if local_enemy > 0 else 0
 
         # Visual field superioirty, but count only when enemies are nearby
         self._vof_grouping = self._vof_num_team
-        self._vof_superiority = self._vof_num_team - self._vof_num_enemy if num_enemy > 0 else 0
+        self._vof_superiority = self._vof_num_team - self._vof_num_enemy if local_enemy > 0 else 0
 
         # Concentrate fire, get from the agent's log
         self._concentrate_fire = 0

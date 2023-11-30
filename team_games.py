@@ -177,8 +177,8 @@ class CommTogether(mg.CommTogether):
     def set_grass_map(self, grass_map):
         self._next_grass_map = grass_map
 
-    # def set_spawn_immunity(self, immunity):
-    #     self._next_spawn_immunity = immunity
+    def set_spawn_immunity(self, immunity):
+        self._next_spawn_immunity = immunity
 
     def _set_config(self):
         # randomly select whether to use the terrain map or grass map
@@ -187,6 +187,7 @@ class CommTogether(mg.CommTogether):
             self._grass_map = self._np_random.choice([True, False])
         # self._spawn_immunity = self._next_spawn_immunity or self._spawn_immunity
         super()._set_config()
+        assert self.config.MAP_SIZE >= self.map_size, "Game map size is too large"
 
     def _define_tasks(self):
         # Changed to use the curriculum file
@@ -194,6 +195,7 @@ class CommTogether(mg.CommTogether):
           curriculum = dill.load(f) # a list of TaskSpec
         team_task = [spec for spec in curriculum if "comm_together" in spec.tags]
         assert len(team_task) == 1, "There should be only one task with the tag"
+        team_task[0].eval_fn_kwargs["dist"] = self.team_within_dist
         return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
 class RadioRaid(mg.RadioRaid):

@@ -60,7 +60,7 @@ class Config:
     kill_bonus_weight = 0.1
     key_achievement_weight = 1.0
     task_progress_weight = 0.01
-    vof_grouping_weight = 0.003
+    comm_grouping_weight = 0.003
 
     survival_mode_criteria = 35  # of the health, food, water levels
     get_resource_criteria = 75
