@@ -78,6 +78,9 @@ class Config:
     attentional_decode = True  # Use attentional action decoder
     extra_encoders = True  # Use inventory and market encoders
 
+    # Learning transfer experiment
+    exp_flag = None
+
     @classmethod
     def asdict(cls):
         return {attr: getattr(cls, attr) for attr in dir(cls)

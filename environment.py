@@ -65,6 +65,16 @@ def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
         config = Config(args)
         if game_cls and isinstance(game_cls, game_api.Game):
             config.set("GAME_PACKS", [(game_cls, 1)])
+        if game_cls is None and args.exp_flag:
+            if args.exp_flag == "koh_only":
+                config.set("GAME_PACKS", [(tg.KingoftheHill, 1)])
+            if args.exp_flag == "koh_easy":
+                config.set("GAME_PACKS", [(tg.KingoftheHill, 1), (tg.EasyKingoftheHill, 1)])
+            if args.exp_flag == "koh_race":
+                config.set("GAME_PACKS", [(tg.KingoftheHill, 1), (tg.RacetoCenter, 1)])
+            if args.exp_flag == "koh_easy_race":
+                config.set("GAME_PACKS", [(tg.KingoftheHill, 1), (tg.RacetoCenter, 1), (tg.EasyKingoftheHill, 1)])
+
         env = nmmo.Env(config)
         env = pufferlib.emulation.PettingZooPufferEnv(env,
             postprocessor_cls=Postprocessor,
