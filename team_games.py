@@ -101,6 +101,10 @@ class RacetoCenter(mg.RacetoCenter):
         race_task *= self.config.PLAYER_N
         return task_spec.make_task_from_spec(self.config.POSSIBLE_AGENTS, race_task)
 
+class OriginalKingoftheHill(mg.KingoftheHill):
+    # This game does not use the curriculum file.
+    pass
+
 class KingoftheHill(mg.KingoftheHill):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
