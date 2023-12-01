@@ -114,7 +114,7 @@ class KingoftheHill(mg.KingoftheHill):
         team_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
         return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
-class KingoftheQuad(mg.KingoftheHill):
+class KingoftheQuad(KingoftheHill):
     _next_seize_target = None
     quadrants = ["first", "second", "third", "fourth"]
 
@@ -148,6 +148,34 @@ class EasyKingoftheHill(KingoftheHill):
         # make the game easier by decreasing the resource demands/penalty
         self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 3)  # from 5
         self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)
+
+class EasyKingoftheQuad(EasyKingoftheHill):
+    _next_seize_target = None
+    quadrants = ["first", "second", "third", "fourth"]
+
+    def set_seize_target(self, target):
+        assert target in self.quadrants, "Invalid target"
+        self._next_seize_target = target
+
+    def _set_realm(self, map_dict):
+        if self._next_seize_target is None:
+            self._next_seize_target = self._np_random.choice(self.quadrants)
+        self.realm.reset(self._np_random, map_dict, custom_spawn=True,
+                         seize_targets=[self._next_seize_target])
+        # team spawn requires custom spawning
+        team_loader = team_helper.TeamLoader(self.config, self._np_random)
+        self.realm.players.spawn(team_loader)
+
+    def _define_tasks(self):
+        # Changed to use the curriculum file
+        with open(self.config.CURRICULUM_FILE_PATH, "rb") as f:
+          curriculum = dill.load(f) # a list of TaskSpec
+        team_task = [spec for spec in curriculum
+                     if "king_hill" in spec.tags and self._next_seize_target in spec.tags]
+        self._next_seize_target = None
+        assert len(team_task) == 1, "There should be only one task with the tag"
+        team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
+        return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
 class Sandwich(mg.Sandwich):
     _next_grass_map = None
