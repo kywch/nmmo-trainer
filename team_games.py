@@ -77,6 +77,11 @@ class MiniTeamBattle(ga.TeamBattle):
         return task_spec.make_task_from_spec(self.config.TEAMS,
                                              [sampled_spec] * len(self.config.TEAMS))
 
+class OriginalRaceToCenter(mg.RacetoCenter):
+    # This does not use the curriculum file, but uses the same ProgressTowardCenter
+    # without the task encoding
+    pass
+
 class RacetoCenter(mg.RacetoCenter):
     def __init__(self, env, sampling_weight=None):
         super().__init__(env, sampling_weight)

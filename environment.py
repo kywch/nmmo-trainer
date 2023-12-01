@@ -66,6 +66,9 @@ def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
         if game_cls and isinstance(game_cls, game_api.Game):
             config.set("GAME_PACKS", [(game_cls, 1)])
         if game_cls is None and args.exp_flag:
+            if args.exp_flag == "race_only":
+                # The original race game does NOT use the curriculum file
+                config.set("GAME_PACKS", [(tg.OriginalRaceToCenter, 1)])
             if args.exp_flag == "koh_only":
                 config.set("GAME_PACKS", [(tg.KingoftheHill, 1)])
             if args.exp_flag == "koh_easy":
