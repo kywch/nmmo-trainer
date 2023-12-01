@@ -80,7 +80,9 @@ class MiniTeamBattle(ga.TeamBattle):
 class OriginalRaceToCenter(mg.RacetoCenter):
     # This does not use the curriculum file, but uses the same ProgressTowardCenter
     # without the task encoding
-    pass
+    def __init__(self, env, sampling_weight=None):
+        super().__init__(env, sampling_weight)
+        self._map_size = 24  # start from a smaller map
 
 class RacetoCenter(mg.RacetoCenter):
     def __init__(self, env, sampling_weight=None):
