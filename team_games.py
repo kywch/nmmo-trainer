@@ -114,14 +114,7 @@ class KingoftheHill(mg.KingoftheHill):
         team_task[0].eval_fn_kwargs["num_ticks"] = self._seize_duration
         return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
 
-class EasyKingoftheHill(KingoftheHill):
-    def _set_config(self):
-        super()._set_config()
-        # make the game easier by decreasing the resource demands/penalty
-        self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 3)  # from 5
-        self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)
-
-class EasyKingoftheQuad(EasyKingoftheHill):
+class KingoftheQuad(mg.KingoftheHill):
     _next_seize_target = None
     quadrants = ["first", "second", "third", "fourth"]
 
@@ -148,6 +141,13 @@ class EasyKingoftheQuad(EasyKingoftheHill):
         assert len(team_task) == 1, "There should be only one task with the tag"
         team_task[0].eval_fn_kwargs["num_ticks"] = self.seize_duration
         return task_spec.make_task_from_spec(self.teams, team_task*len(self.teams))
+
+class EasyKingoftheHill(KingoftheHill):
+    def _set_config(self):
+        super()._set_config()
+        # make the game easier by decreasing the resource demands/penalty
+        self.config.set_for_episode("RESOURCE_DEPLETION_RATE", 3)  # from 5
+        self.config.set_for_episode("RESOURCE_RESILIENT_POPULATION", 1)
 
 class Sandwich(mg.Sandwich):
     _next_grass_map = None
