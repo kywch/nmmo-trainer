@@ -126,7 +126,8 @@ class MiniGamePostprocessor(pufferlib.emulation.Postprocessor):
 
             if isinstance(self.env.game, tg.RacetoCenter) or isinstance(self.env.game, tg.KingoftheHill) \
                or isinstance(self.env.game, tg.Sandwich) or isinstance(self.env.game, tg.CommTogether) \
-               or isinstance(self.env.game, tg.RadioRaid) or isinstance(self.env.game, tg.OriginalRaceToCenter):
+               or isinstance(self.env.game, tg.RadioRaid) or isinstance(self.env.game, tg.OriginalRaceToCenter) \
+               or isinstance(self.env.game, tg.OriginalKingoftheHill):
                 info["stats"][game_name+"/game_won"] = self.env.game.winners is not None
                 info["stats"][game_name+"/map_size"] = self.env.game.map_size
                 max_progress = [task.progress_info["max_progress"] for task in self.env.game.tasks]

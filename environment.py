@@ -12,16 +12,15 @@ import pufferlib.emulation
 import nmmo
 import nmmo.core.config as cfg
 from nmmo.core import game_api
-from nmmo.lib import material, utils
+from nmmo.lib import material
 from nmmo.lib.event_log import EventCode
-from nmmo.entity.entity import EntityState, CommAttr
+from nmmo.entity.entity import EntityState
 
 from minigame_postproc import MiniGamePostprocessor
 import team_games as tg
 import postproc_helper as pph
 
 EntityAttr = EntityState.State.attr_name_to_col
-CommAttr = {"id": 0, "row": 1, "col": 2, "message": 3}
 IMPASSIBLE = list(material.Impassible.indices)
 
 RESOURCE_EVENTS = [EventCode.EAT_FOOD, EventCode.DRINK_WATER]
@@ -55,7 +54,7 @@ class Config(cfg.Medium, cfg.Terrain, cfg.Resource, cfg.Combat, cfg.NPC, cfg.Com
         self.set("TASK_EMBED_DIM", args.task_size)
 
         self.set("GAME_PACKS", [(tg.MiniAgentTraining, 1), (tg.MiniTeamTraining, 1), (tg.MiniTeamBattle, 1),
-                                (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.KingoftheQuad, 1),
+                                (tg.RacetoCenter, 1), (tg.KingoftheHill, 1), (tg.KingoftheQuad, 1), (tg.EasyKingoftheHill, 1),
                                 (tg.Sandwich, 1), (tg.CommTogether, 1), (tg.RadioRaid, 1)])
 
 def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
