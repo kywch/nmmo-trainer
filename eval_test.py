@@ -28,6 +28,9 @@ import pufferlib.utils
 import environment
 
 from reinforcement_learning import config, clean_pufferl
+import team_games as tg
+
+MINIGAME_CURRICULUM_FILE = "team_task_with_embedding.pkl"
 
 def setup_policy_store(policy_store_dir):
     # CHECK ME: can be custom models with different architectures loaded here?
@@ -57,14 +60,10 @@ def save_replays(policy_store_dir, save_dir):
     args.use_serial_vecenv = True
     args.learner_weight = 0  # evaluate mode
     args.selfplay_num_policies = num_policies + 1
-    args.early_stop_agent_num = 0  # run the full episode
-    args.resilient_population = 0  # no resilient agents
+    args.tasks_path = MINIGAME_CURRICULUM_FILE  # task-conditioning
 
-    #args.tasks_path = None
-    args.team_mode_prob = 1
-    args.num_agents = 128
-    args.spawn_immunity = 64
-    args.npc_power = 0.1
+    args.num_agents = 72  # 4 teams of 8, but can be differnt
+    args.num_agents_per_team = 8  # 8 is the default
 
     # NOTE: This creates a dummy learner agent. Is it necessary?
     from reinforcement_learning import policy  # import your policy
@@ -76,10 +75,34 @@ def save_replays(policy_store_dir, save_dir):
         )
         return cleanrl.Policy(learner_policy)
 
+    SEED = 1
+    game_cls = tg.CommTogether
+    def setup_game(env):
+        game = game_cls(env)
+        if game.name == "RacetoCenter":
+          game.set_map_size(128)
+        if game.name == "EasyKingoftheHill":
+          game.set_seize_duration(100)
+        if game.name == "KingoftheHill":
+          game.set_seize_duration(50)
+        if game.name == "KingoftheQuad":
+          game.set_seize_target("first")
+        if game.name == "Sandwich":
+          game.set_inner_npc_num(8)
+          game.set_grass_map(True)
+        if game.name == "RadioRaid":
+          game.set_grass_map(True)
+          game.set_goal_num_npc(25)
+        if game.name == "CommTogether":
+          game.set_grass_map(True)
+          game.set_map_size(128)
+          #game.set_spawn_immunity(128)
+        return game
+
     # Setup the evaluator. No training during evaluation
     evaluator = clean_pufferl.CleanPuffeRL(
         seed=args.seed,
-        env_creator=environment.make_env_creator(args),
+        env_creator=environment.make_env_creator(args, game_cls),
         env_creator_kwargs={},
         agent_creator=make_policy,
         vectorization=Serial,
@@ -104,31 +127,12 @@ def save_replays(policy_store_dir, save_dir):
     nmmo_env = evaluator.buffers[0].envs[0].envs[0].env
     replay_helper = FileReplayHelper()
     nmmo_env.realm.record_replay(replay_helper)
-
-    # team tasks
-    eli_task = TaskSpec(eval_fn=AllDead, eval_fn_kwargs={'target': 'all_foes'}, reward_to='team')
-    num_teams = len(nmmo_env.config.TEAMS)
-    team_tasks = make_task_from_spec(nmmo_env.config.TEAMS, [eli_task] * num_teams)
-    team_helper = TeamHelper(nmmo_env.config.TEAMS)
-
-    # Run an episode to generate the replay
-    # for ii in range(5):
-    #     if ii > 0:
-    #         evaluator.buffers[0].send(actions.cpu().numpy(), None)
-    nmmo_env.reset(make_task_fn=lambda: team_tasks)
-
-    # Replace the names of the agents with the policy names
-    # TODO: Get the id-to-name mapping from the evaluator or policy pool
-    for samp, (policy_name, _) in zip(evaluator.policy_pool._sample_idxs, evaluator.policy_pool._policies.items()):
-        for idx in samp:
-            agent_id = nmmo_env.possible_agents[idx]
-            nmmo_env.realm.players[agent_id].name = \
-              f"Team-{team_helper.team_and_position_for_agent[agent_id][0]}_{agent_id}"
-
+    nmmo_env.reset(game=setup_game(nmmo_env), seed=SEED)
+    attach_policy_tag(nmmo_env, evaluator.policy_pool)
     o, r, d, i = evaluator.buffers[0].recv()  # reset the env
     print("seed:", nmmo_env._np_seed,
-          ", curri:", nmmo_env.config.CURRICULUM_FILE_PATH,
-          ", tasks:", len(nmmo_env.tasks))
+          ", game:", nmmo_env.game,
+          ", task:", nmmo_env.tasks[0].spec_name)
     replay_helper.reset()
     while True:
         with torch.no_grad():
@@ -142,38 +146,57 @@ def save_replays(policy_store_dir, save_dir):
         o, r, d, i = evaluator.buffers[0].recv()
 
         num_alive = len(nmmo_env.realm.players)
-        print('Tick:', nmmo_env.realm.tick, ", alive agents:", num_alive)
-        if num_alive == 0 or nmmo_env.realm.tick == args.max_episode_length:
+        max_progress = max(task.progress for task in nmmo_env.tasks)
+        print('Tick:', nmmo_env.realm.tick, ", alive agents:", num_alive,
+              f", curr max progress:{max_progress:.3f}")
+
+        if nmmo_env.game.winners is not None:
+            print("A team completed the task and won: ", nmmo_env.game.winners)
             break
 
-    episode_stats = nmmo_env.get_episode_stats()
+        # for task in nmmo_env.tasks:
+        #     if task.completed:
+        #         print("A team completed the task and won: ", task.assignee)
+        #         break
+
+        if nmmo_env.game.is_over:
+            print("Draw")
+            break
+
+    episode_stats = nmmo_env.game.get_episode_stats()
     num_agents = len(nmmo_env.possible_agents)
-    print(f'Score: {float(episode_stats["total_agent_steps"])/(num_agents*args.max_episode_length):.3f},',
+    print(f"Winning score: {nmmo_env.game.winning_score:.3f},",
+          f'Score: {float(episode_stats["total_agent_steps"])/(num_agents*nmmo_env.config.HORIZON):.3f},',
           f'norm_progress_to_center {episode_stats["norm_progress_to_center"]:.3f}')
 
     # Save the replay file
     replay_file = os.path.join(save_dir, f"replay_{time.strftime('%Y%m%d_%H%M%S')}")
     logging.info("Saving replay to %s", replay_file)
-    replay_helper.save(replay_file, compress=False)
+    replay_helper.save(replay_file, compress=True)
     evaluator.close()
 
-def create_policy_ranker(policy_store_dir, ranker_file="openskill.pickle"):
+def create_policy_ranker(policy_store_dir, ranker_file="ranker.pickle", db_file="ranking.sqlite"):
     file = os.path.join(policy_store_dir, ranker_file)
     if os.path.exists(file):
-        if os.path.exists(file + ".lock"):
-            raise ValueError("Policy ranker file is locked. Delete the lock file.")
-        logging.info("Using policy ranker from %s", file)
-        policy_ranker = pufferlib.utils.PersistentObject(
-            file,
-            pufferlib.policy_ranker.OpenSkillRanker,
-        )
+        logging.info("Using existing policy ranker from %s", file)
+        policy_ranker = pufferlib.policy_ranker.OpenSkillRanker.load_from_file(file)
     else:
-        policy_ranker = pufferlib.utils.PersistentObject(
-            file,
-            pufferlib.policy_ranker.OpenSkillRanker,
-            "anchor",
-        )
+        logging.info("Creating a new policy ranker and db under %s", policy_store_dir)
+        db_file = os.path.join(policy_store_dir, db_file)
+        policy_ranker = pufferlib.policy_ranker.OpenSkillRanker(db_file, "anchor")
     return policy_ranker
+
+def attach_policy_tag(nmmo_env, policy_pool):
+    if len(policy_pool._policies) <= 2:
+        return
+    for samp, (policy_name, _) in zip(policy_pool._sample_idxs, policy_pool._policies.items()):
+        for idx in samp:
+            agent_id = nmmo_env.possible_agents[idx]
+            agent = nmmo_env.realm.players[agent_id]
+            if nmmo_env.game.game_mode and nmmo_env.game.game_mode.startswith("team"):
+                agent.name += f"*P{policy_name[-10:]}"
+            else:
+                agent.name = f"P{policy_name[-10:]}_" + agent.name
 
 class AllPolicySelector(pufferlib.policy_ranker.PolicySelector):
     def select_policies(self, policies):
@@ -198,8 +221,6 @@ def rank_policies(policy_store_dir, eval_curriculum_file, device):
     args.num_buffers = 1
     args.learner_weight = 0  # evaluate mode
     args.selfplay_num_policies = num_policies + 1
-    args.early_stop_agent_num = 0  # run the full episode
-    args.resilient_population = 0  # no resilient agents
     args.tasks_path = eval_curriculum_file  # task-conditioning
 
     # NOTE: This creates a dummy learner agent. Is it necessary?
@@ -350,7 +371,9 @@ if __name__ == "__main__":
     # Parse and check the arguments
     eval_args = parser.parse_args()
 
-    eval_args.policy_store_dir = "r263_pt"
+    #eval_args.policy_store_dir = "rm63d_885"
+    eval_args.policy_store_dir = "rm63d_mix"
+
     eval_args.replay_mode = True
 
     assert eval_args.policy_store_dir is not None, "Policy store directory must be specified"
