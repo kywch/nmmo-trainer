@@ -75,6 +75,8 @@ def make_env_creator(args: Namespace, game_cls: game_api.Game=None):
                 config.set("GAME_PACKS", [(tg.KingoftheHill, 1), (tg.OriginalRaceToCenter, 1)])
             if args.exp_flag == "koh_race_org":
                 config.set("GAME_PACKS", [(tg.OriginalKingoftheHill, 1), (tg.OriginalRaceToCenter, 1)])
+            if args.exp_flag == "race_nofog_koh":
+                config.set("GAME_PACKS", [(tg.OriginalRaceToCenter, 1), (tg.NofogKingoftheHill, 1)])
 
         env = nmmo.Env(config)
         env = pufferlib.emulation.PettingZooPufferEnv(env,

@@ -105,6 +105,11 @@ class OriginalKingoftheHill(mg.KingoftheHill):
     # This game does not use the curriculum file.
     pass
 
+class NofogKingoftheHill(mg.KingoftheHill):
+    def _set_config(self):
+        super()._set_config()
+        self.config.set_for_episode("DEATH_FOG_ONSET", None)
+
 class KingoftheHill(mg.KingoftheHill):
     def is_compatible(self):
         return check_curriculum_file(self.config) and super().is_compatible()
