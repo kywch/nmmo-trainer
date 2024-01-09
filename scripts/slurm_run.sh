@@ -6,18 +6,18 @@
 #   --run-name=test --wandb-project=nmmo --wandb-entity=kywch
 
 #SBATCH --account=carperai
-#SBATCH --partition=g40x
+#SBATCH --partition=a40x
 #SBATCH --nodes=1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-gpu=16
 #__SBATCH --mem=80G
-#SBATCH --chdir=/fsx/proj-nmmo/nmmo-trainer/
+#SBATCH --chdir=/weka/proj-nmmo/nmmo-trainer/
 #SBATCH --output=sbatch/%j.log
 #SBATCH --error=sbatch/%j.log
 #SBATCH --requeue
-#SBATCH --export=PYTHONUNBUFFERED=1,WANDB_BASE_URL="https://stability.wandb.io",WANDB_DIR=/fsx/proj-nmmo/tmp/wandb,WANDB_CONFIG_DIR=/fsx/proj-nmmo/tmp/wandb
+#SBATCH --export=PYTHONUNBUFFERED=1,WANDB_BASE_URL="https://stability.wandb.io",WANDB_DIR=/weka/proj-nmmo/tmp/wandb,WANDB_CONFIG_DIR=/weka/proj-nmmo/tmp/wandb
 
-source /fsx/proj-nmmo/venv/bin/activate && \
+source /weka/proj-nmmo/venv/bin/activate && \
 ulimit -c unlimited && \
 ulimit -s unlimited && \
 ulimit -a
